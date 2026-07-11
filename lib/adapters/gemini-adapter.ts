@@ -8,7 +8,7 @@ export class GeminiAdapter implements ExternalServiceAdapter {
   constructor() {
     this.apiUrl = 'https://generativelanguage.googleapis.com/v1beta'
     this.apiKey = process.env.GEMINI_API_TOKEN || ''
-    this.model = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+    this.model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
   }
 
   async interpretMessage(message: string): Promise<InterpretedOrder> {
