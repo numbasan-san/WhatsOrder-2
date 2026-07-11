@@ -3,6 +3,38 @@ import { ERPAdapter } from '@/lib/adapters/erp-adapter'
 import { GeminiAdapter } from '@/lib/adapters/gemini-adapter'
 import { createClient } from '@/lib/supabase/server'
 
+// Rate Limiter por usuario
+class UserRateLimiter {
+  private userLimits: Map<string, { count: number; resetTime: number }> = new Map()
+  private limit: number = 3 // 3 requests por minuto
+  private window: number = 60000 // 1 minuto
+
+  canProcess(userId: string): boolean {
+    const now = Date.now()
+    const userLimit = this.userLimits.get(userId)
+    
+    if (!userLimit || now > userLimit.resetTime) {
+      this.userLimits.set(userId, { count: 1, resetTime: now + this.window })
+      return true
+    }
+    
+    if (userLimit.count < this.limit) {
+      userLimit.count++
+      return true
+    }
+    
+    return false
+  }
+
+  getRemainingTime(userId: string): number {
+    const userLimit = this.userLimits.get(userId)
+    if (!userLimit) return 0
+    return Math.max(0, Math.ceil((userLimit.resetTime - Date.now()) / 1000))
+  }
+}
+
+const rateLimiter = new UserRateLimiter()
+
 export class OrderService {
   private telegram: TelegramAdapter
   private erp: ERPAdapter
@@ -16,8 +48,39 @@ export class OrderService {
 
   async processTelegramOrder(message: string, chatId: string) {
     try {
-      // 1. Interpretar mensaje con Gemini
-      const interpreted = await this.gemini.interpretMessage(message)
+      // 1. Verificar rate limit por usuario
+      if (!rateLimiter.canProcess(chatId)) {
+        const remainingTime = rateLimiter.getRemainingTime(chatId)
+        await this.telegram.sendSimpleMessage(
+          chatId,
+          `Has alcanzado el límite de pedidos. Espera ${remainingTime} segundos antes de intentar de nuevo.`
+        )
+        return {
+          success: false,
+          error: 'Rate limit excedido',
+          retryAfter: remainingTime
+        }
+      }
+
+      // 2. Interpretar mensaje con Gemini (con manejo de 429)
+      let interpreted
+      try {
+        interpreted = await this.gemini.interpretMessage(message)
+      } catch (error: any) {
+        // Si es error de rate limit de Gemini, notificar al usuario
+        if (error.message?.includes('429') || error.message?.includes('rate limit')) {
+          await this.telegram.sendSimpleMessage(
+            chatId,
+            'El servicio de IA está experimentando alta demanda. Por favor, espera unos segundos y vuelve a intentar.'
+          )
+          return {
+            success: false,
+            error: 'Gemini rate limit excedido',
+            retryAfter: 15
+          }
+        }
+        throw error
+      }
       
       if (!interpreted.products || interpreted.products.length === 0) {
         await this.telegram.sendSimpleMessage(
@@ -31,7 +94,7 @@ export class OrderService {
         }
       }
 
-      // 2. Verificar stock y obtener precios
+      // 3. Verificar stock y obtener precios
       const productDetails = await Promise.all(
         interpreted.products.map(async (product: { id: string; quantity: number }) => {
           const stock = await this.erp.queryStock(product.id)
@@ -40,13 +103,13 @@ export class OrderService {
         })
       )
 
-      // 3. Calcular total
+      // 4. Calcular total
       const total = productDetails.reduce(
         (sum, p) => sum + (p.price * p.quantity),
         0
       )
 
-      // 4. Guardar en base de datos
+      // 5. Guardar en base de datos
       const supabase = await createClient()
       const { data: order, error } = await supabase
         .from('pedidos')
@@ -58,14 +121,14 @@ export class OrderService {
           status: 'pending',
           source: 'telegram',
           delivery_address: interpreted.deliveryAddress || null,
-          raw_message: message // ← Guardar mensaje original para auditoría
+          raw_message: message
         })
         .select()
         .single()
 
       if (error) throw error
 
-      // 5. Enviar confirmación por Telegram con botones
+      // 6. Enviar confirmación por Telegram con botones
       await this.telegram.send({
         customerPhone: chatId,
         products: interpreted.products,
@@ -83,10 +146,17 @@ export class OrderService {
     } catch (error) {
       console.error('Error procesando pedido:', error)
       
-      await this.telegram.sendSimpleMessage(
-        chatId,
-        'Ocurrió un error procesando tu pedido. Por favor, intenta de nuevo más tarde.'
-      )
+      // Mensaje de error más amigable
+      let errorMessage = 'Ocurrió un error procesando tu pedido. Por favor, intenta de nuevo más tarde.'
+      if (error instanceof Error) {
+        if (error.message.includes('429')) {
+          errorMessage = 'El servicio de IA está sobrecargado. Espera unos segundos y vuelve a intentar.'
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'El servidor está tardando en responder. Por favor, intenta de nuevo.'
+        }
+      }
+      
+      await this.telegram.sendSimpleMessage(chatId, errorMessage)
       
       return {
         success: false,
@@ -149,7 +219,7 @@ export class OrderService {
     const telegram = new TelegramAdapter()
     await telegram.sendSimpleMessage(
       order.customer_phone,
-      `¡Tu pedido #${orderId.slice(0, 8)} ha sido aprobado!\n\n📦 Estará en camino pronto.\n\nGracias por tu compra! 🙌`
+      `¡Tu pedido #${orderId.slice(0, 8)} ha sido aprobado!\n\nEstará en camino pronto.\n\nGracias por tu compra!`
     )
 
     return data
