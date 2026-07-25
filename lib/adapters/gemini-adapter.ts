@@ -41,7 +41,7 @@ export class GeminiAdapter implements ExternalServiceAdapter {
             temperature: 0.3,
             topK: 32,
             topP: 0.95,
-            maxOutputTokens: 1024, // Aumentado de 512 a 1024
+            maxOutputTokens: 1024,
             responseMimeType: 'application/json',
           }
         })
@@ -56,13 +56,9 @@ export class GeminiAdapter implements ExternalServiceAdapter {
       const data = await response.json()
       const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
       
-      console.log('Raw response length:', textResponse.length)
       console.log('Raw response:', textResponse)
       
-      // Intentar reparar la respuesta antes de limpiar
-      const repairedResponse = this.repairIncompleteJson(textResponse)
-      const cleanedText = this.cleanJsonResponse(repairedResponse)
-      
+      const cleanedText = this.cleanJsonResponse(textResponse)
       console.log('Cleaned JSON:', cleanedText)
       
       try {
@@ -70,7 +66,6 @@ export class GeminiAdapter implements ExternalServiceAdapter {
         return this.mapGeminiResponseToOrder(parsed)
       } catch (parseError) {
         console.error('Error parsing JSON:', parseError)
-        // Si falla, intentar con un enfoque más agresivo
         const fallbackResult = this.tryFallbackParsing(textResponse)
         if (fallbackResult) {
           return fallbackResult
@@ -84,74 +79,11 @@ export class GeminiAdapter implements ExternalServiceAdapter {
   }
 
   private buildPrompt(message: string): string {
-    // Prompt más corto y directo para ahorrar tokens
     return `
 Extract products from: "${message}"
 Return JSON: {"products":[{"id":"name","quantity":number}]}
 Only return JSON, no other text.
 `.trim()
-  }
-
-  private repairIncompleteJson(text: string): string {
-    let repaired = text.trim()
-    
-    // Si está vacío, devolver objeto vacío
-    if (!repaired || repaired.length === 0) {
-      return '{"products":[]}'
-    }
-    
-    // Contar llaves abiertas y cerradas
-    let openBraces = (repaired.match(/\{/g) || []).length
-    let closeBraces = (repaired.match(/\}/g) || []).length
-    
-    // Si falta el cierre del objeto principal
-    if (openBraces > closeBraces) {
-      // Si hay un "products:" pero no tiene contenido, cerrarlo
-      if (repaired.includes('"products"')) {
-        // Si termina con "products": y está incompleto
-        if (repaired.endsWith('"products":') || repaired.endsWith('"products": ')) {
-          repaired += '[]}'
-        }
-        // Si termina con "products": [ y está incompleto
-        else if (repaired.endsWith('"products": [') || repaired.endsWith('"products": [')) {
-          repaired += ']}'
-        }
-        // Si termina con "products": { y está incompleto
-        else if (repaired.endsWith('"products": {') || repaired.endsWith('"products": {')) {
-          repaired += '}}'
-        }
-        // Si termina con "products": [ y tiene algo pero no está cerrado
-        else if (repaired.includes('"products": [') && !repaired.includes(']')) {
-          repaired += ']}'
-        }
-        // Si termina con una coma
-        else if (repaired.endsWith(',')) {
-          repaired = repaired.slice(0, -1)
-          // Cerrar las llaves faltantes
-          openBraces = (repaired.match(/\{/g) || []).length
-          closeBraces = (repaired.match(/\}/g) || []).length
-          while (closeBraces < openBraces) {
-            repaired += '}'
-            closeBraces++
-          }
-        }
-      }
-    }
-    
-    // Si el JSON está completamente vacío o solo tiene llaves abiertas
-    if (repaired === '{' || repaired === '{"') {
-      return '{"products":[]}'
-    }
-    
-    // Cerrar llaves faltantes
-    openBraces = (repaired.match(/\{/g) || []).length
-    closeBraces = (repaired.match(/\}/g) || []).length
-    while (closeBraces < openBraces) {
-      repaired += '}'
-      closeBraces++
-    }
-    
-    return repaired
   }
 
   private cleanJsonResponse(text: string): string {
@@ -173,34 +105,109 @@ Only return JSON, no other text.
       cleaned = cleaned.substring(0, lastBracket + 1)
     }
     
-    // Remove trailing commas
-    cleaned = cleaned.replace(/,\s*$/, '')
+    // Fix common JSON issues:
+    // 1. Remove trailing commas
+    cleaned = cleaned.replace(/,\s*}/g, '}')
+    cleaned = cleaned.replace(/,\s*\]/g, ']')
+    
+    // 2. Fix extra quotes at the end (like ...null"})
+    cleaned = cleaned.replace(/"\s*}$/g, '}')
+    cleaned = cleaned.replace(/"\s*\]\s*}$/g, ']}')
+    
+    // 3. Remove any trailing quotes that don't belong
+    cleaned = cleaned.replace(/"+/g, (match) => {
+      // If there are multiple quotes in a row, keep only one
+      return '"'
+    })
+    
+    // 4. Fix null values with quotes
+    cleaned = cleaned.replace(/"null"/g, 'null')
+    cleaned = cleaned.replace(/"undefined"/g, 'null')
+    
+    // 5. Ensure proper closing
+    let openBraces = (cleaned.match(/\{/g) || []).length
+    let closeBraces = (cleaned.match(/\}/g) || []).length
+    
+    // If there's an extra closing brace, remove it
+    while (closeBraces > openBraces) {
+      const lastBraceIndex = cleaned.lastIndexOf('}')
+      if (lastBraceIndex > 0) {
+        cleaned = cleaned.substring(0, lastBraceIndex) + cleaned.substring(lastBraceIndex + 1)
+        closeBraces--
+      } else {
+        break
+      }
+    }
+    
+    // If there's a missing closing brace, add it
+    while (closeBraces < openBraces) {
+      cleaned += '}'
+      closeBraces++
+    }
+    
+    // 6. Final cleanup: ensure it starts with { and ends with }
+    if (!cleaned.startsWith('{')) {
+      const firstBrace = cleaned.indexOf('{')
+      if (firstBrace > 0) {
+        cleaned = cleaned.substring(firstBrace)
+      }
+    }
+    if (!cleaned.endsWith('}')) {
+      const lastBrace = cleaned.lastIndexOf('}')
+      if (lastBrace > 0) {
+        cleaned = cleaned.substring(0, lastBrace + 1)
+      } else {
+        cleaned += '}'
+      }
+    }
     
     return cleaned
   }
 
   private tryFallbackParsing(rawText: string): InterpretedOrder | null {
     try {
-      // Intentar extraer productos con regex
-      const productPattern = /["']?id["']?\s*:\s*["']([^"']+)["']/i
-      const matches = rawText.match(productPattern)
+      const products: ProductItem[] = []
       
-      if (matches) {
-        const products: ProductItem[] = []
-        // Intentar encontrar todos los IDs
-        const allMatches = rawText.match(/["']?id["']?\s*:\s*["']([^"']+)["']/gi)
-        if (allMatches) {
-          allMatches.forEach((match: string) => {
-            const idMatch = match.match(/["']([^"']+)["']/)
-            if (idMatch) {
-              products.push({
-                id: this.normalizeProductName(idMatch[1]),
-                quantity: 1,
-                price: 0
-              })
-            }
+      // Try to extract product names and quantities using regex
+      const productMatches = rawText.matchAll(/["']?id["']?\s*:\s*["']([^"']+)["']/gi)
+      const quantityMatches = rawText.matchAll(/["']?quantity["']?\s*:\s*(\d+)/gi)
+      
+      const ids: string[] = []
+      const quantities: number[] = []
+      
+      for (const match of productMatches) {
+        ids.push(match[1])
+      }
+      
+      for (const match of quantityMatches) {
+        quantities.push(parseInt(match[1]))
+      }
+      
+      // If we have IDs, use them
+      if (ids.length > 0) {
+        ids.forEach((id, index) => {
+          const quantity = quantities[index] || 1
+          products.push({
+            id: this.normalizeProductName(id),
+            quantity: Math.max(1, quantity)
           })
-        }
+        })
+        return { products }
+      }
+      
+      // Try to find any quoted strings that might be products
+      const stringMatches = rawText.match(/["']([^"']+)["']/g)
+      if (stringMatches && stringMatches.length > 0) {
+        stringMatches.forEach((match) => {
+          const cleanMatch = match.replace(/["']/g, '')
+          if (cleanMatch.length > 1 && 
+              !['products', 'id', 'quantity', 'customerName', 'deliveryAddress', 'null', 'true', 'false'].includes(cleanMatch.toLowerCase())) {
+            products.push({
+              id: this.normalizeProductName(cleanMatch),
+              quantity: 1
+            })
+          }
+        })
         if (products.length > 0) {
           return { products }
         }
@@ -220,10 +227,9 @@ Only return JSON, no other text.
         const id = p.id || p.name || p.product || p.producto || p.nombre
         const quantity = parseInt(p.quantity || p.cantidad || 1)
         if (id) {
-          products.push({
-            id: this.normalizeProductName(id),
-            quantity: Math.max(1, quantity),
-            price: 0
+          products.push({ 
+            id: this.normalizeProductName(id), 
+            quantity: Math.max(1, quantity) 
           })
         }
       })
@@ -234,8 +240,7 @@ Only return JSON, no other text.
         const quantity = typeof value === 'number' ? value : 1
         products.push({
           id: this.normalizeProductName(key),
-          quantity: Math.max(1, quantity),
-          price: 0
+          quantity: Math.max(1, quantity)
         })
       })
     }
