@@ -41,7 +41,7 @@ export class GeminiAdapter implements ExternalServiceAdapter {
             temperature: 0.3,
             topK: 32,
             topP: 0.95,
-            maxOutputTokens: 512,
+            maxOutputTokens: 1024, // Aumentado de 512 a 1024
             responseMimeType: 'application/json',
           }
         })
@@ -56,7 +56,13 @@ export class GeminiAdapter implements ExternalServiceAdapter {
       const data = await response.json()
       const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
       
-      const cleanedText = this.cleanJsonResponse(textResponse)
+      console.log('Raw response length:', textResponse.length)
+      console.log('Raw response:', textResponse)
+      
+      // Intentar reparar la respuesta antes de limpiar
+      const repairedResponse = this.repairIncompleteJson(textResponse)
+      const cleanedText = this.cleanJsonResponse(repairedResponse)
+      
       console.log('Cleaned JSON:', cleanedText)
       
       try {
@@ -64,7 +70,11 @@ export class GeminiAdapter implements ExternalServiceAdapter {
         return this.mapGeminiResponseToOrder(parsed)
       } catch (parseError) {
         console.error('Error parsing JSON:', parseError)
-        console.log('Raw response:', textResponse)
+        // Si falla, intentar con un enfoque más agresivo
+        const fallbackResult = this.tryFallbackParsing(textResponse)
+        if (fallbackResult) {
+          return fallbackResult
+        }
         return { products: [] }
       }
     } catch (error) {
@@ -74,14 +84,74 @@ export class GeminiAdapter implements ExternalServiceAdapter {
   }
 
   private buildPrompt(message: string): string {
+    // Prompt más corto y directo para ahorrar tokens
     return `
-Extract products and quantities from the message. Respond ONLY with valid JSON, no markdown, no extra text.
-
-Message: "${message}"
-
-Expected format:
-{"products":[{"id":"product_name","quantity":number}],"customerName":"customer_name","deliveryAddress":"delivery_address"}
+Extract products from: "${message}"
+Return JSON: {"products":[{"id":"name","quantity":number}]}
+Only return JSON, no other text.
 `.trim()
+  }
+
+  private repairIncompleteJson(text: string): string {
+    let repaired = text.trim()
+    
+    // Si está vacío, devolver objeto vacío
+    if (!repaired || repaired.length === 0) {
+      return '{"products":[]}'
+    }
+    
+    // Contar llaves abiertas y cerradas
+    let openBraces = (repaired.match(/\{/g) || []).length
+    let closeBraces = (repaired.match(/\}/g) || []).length
+    
+    // Si falta el cierre del objeto principal
+    if (openBraces > closeBraces) {
+      // Si hay un "products:" pero no tiene contenido, cerrarlo
+      if (repaired.includes('"products"')) {
+        // Si termina con "products": y está incompleto
+        if (repaired.endsWith('"products":') || repaired.endsWith('"products": ')) {
+          repaired += '[]}'
+        }
+        // Si termina con "products": [ y está incompleto
+        else if (repaired.endsWith('"products": [') || repaired.endsWith('"products": [')) {
+          repaired += ']}'
+        }
+        // Si termina con "products": { y está incompleto
+        else if (repaired.endsWith('"products": {') || repaired.endsWith('"products": {')) {
+          repaired += '}}'
+        }
+        // Si termina con "products": [ y tiene algo pero no está cerrado
+        else if (repaired.includes('"products": [') && !repaired.includes(']')) {
+          repaired += ']}'
+        }
+        // Si termina con una coma
+        else if (repaired.endsWith(',')) {
+          repaired = repaired.slice(0, -1)
+          // Cerrar las llaves faltantes
+          openBraces = (repaired.match(/\{/g) || []).length
+          closeBraces = (repaired.match(/\}/g) || []).length
+          while (closeBraces < openBraces) {
+            repaired += '}'
+            closeBraces++
+          }
+        }
+      }
+    }
+    
+    // Si el JSON está completamente vacío o solo tiene llaves abiertas
+    if (repaired === '{' || repaired === '{"') {
+      return '{"products":[]}'
+    }
+    
+    // Cerrar llaves faltantes
+    openBraces = (repaired.match(/\{/g) || []).length
+    closeBraces = (repaired.match(/\}/g) || []).length
+    while (closeBraces < openBraces) {
+      repaired += '}'
+      closeBraces++
+    }
+    
+    return repaired
   }
 
   private cleanJsonResponse(text: string): string {
@@ -106,15 +176,40 @@ Expected format:
     // Remove trailing commas
     cleaned = cleaned.replace(/,\s*$/, '')
     
-    // Fix missing closing braces
-    let openBraces = (cleaned.match(/\{/g) || []).length
-    let closeBraces = (cleaned.match(/\}/g) || []).length
-    while (closeBraces < openBraces) {
-      cleaned += '}'
-      closeBraces++
-    }
-    
     return cleaned
+  }
+
+  private tryFallbackParsing(rawText: string): InterpretedOrder | null {
+    try {
+      // Intentar extraer productos con regex
+      const productPattern = /["']?id["']?\s*:\s*["']([^"']+)["']/i
+      const matches = rawText.match(productPattern)
+      
+      if (matches) {
+        const products: ProductItem[] = []
+        // Intentar encontrar todos los IDs
+        const allMatches = rawText.match(/["']?id["']?\s*:\s*["']([^"']+)["']/gi)
+        if (allMatches) {
+          allMatches.forEach((match: string) => {
+            const idMatch = match.match(/["']([^"']+)["']/)
+            if (idMatch) {
+              products.push({
+                id: this.normalizeProductName(idMatch[1]),
+                quantity: 1,
+                price: 0
+              })
+            }
+          })
+        }
+        if (products.length > 0) {
+          return { products }
+        }
+      }
+      
+      return null
+    } catch {
+      return null
+    }
   }
 
   private mapGeminiResponseToOrder(geminiResponse: any): InterpretedOrder {
@@ -134,7 +229,6 @@ Expected format:
       })
     }
     
-    // Fallback: try to parse from 'items' object if products array is empty
     if (products.length === 0 && geminiResponse.items) {
       Object.entries(geminiResponse.items).forEach(([key, value]) => {
         const quantity = typeof value === 'number' ? value : 1
