@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase/server'
 // Rate Limiter por usuario
 class UserRateLimiter {
   private userLimits: Map<string, { count: number; resetTime: number }> = new Map()
-  private limit: number = 3 // 3 requests por minuto
-  private window: number = 60000 // 1 minuto
+  private limit: number = 3
+  private window: number = 60000
 
   canProcess(userId: string): boolean {
     const now = Date.now()
@@ -48,12 +48,11 @@ export class OrderService {
 
   async processTelegramOrder(message: string, chatId: string) {
     try {
-      // 1. Verificar rate limit por usuario
       if (!rateLimiter.canProcess(chatId)) {
         const remainingTime = rateLimiter.getRemainingTime(chatId)
         await this.telegram.sendSimpleMessage(
           chatId,
-          `Has alcanzado el límite de pedidos. Espera ${remainingTime} segundos antes de intentar de nuevo.`
+          `Has alcanzado el limite de pedidos. Espera ${remainingTime} segundos antes de intentar de nuevo.`
         )
         return {
           success: false,
@@ -62,16 +61,14 @@ export class OrderService {
         }
       }
 
-      // 2. Interpretar mensaje con Gemini (con manejo de 429)
       let interpreted
       try {
         interpreted = await this.gemini.interpretMessage(message)
       } catch (error: any) {
-        // Si es error de rate limit de Gemini, notificar al usuario
         if (error.message?.includes('429') || error.message?.includes('rate limit')) {
           await this.telegram.sendSimpleMessage(
             chatId,
-            'El servicio de IA está experimentando alta demanda. Por favor, espera unos segundos y vuelve a intentar.'
+            'El servicio de IA esta experimentando alta demanda. Por favor, espera unos segundos y vuelve a intentar.'
           )
           return {
             success: false,
@@ -94,7 +91,6 @@ export class OrderService {
         }
       }
 
-      // 3. Verificar stock y obtener precios
       const productDetails = await Promise.all(
         interpreted.products.map(async (product: { id: string; quantity: number }) => {
           const stock = await this.erp.queryStock(product.id)
@@ -103,32 +99,38 @@ export class OrderService {
         })
       )
 
-      // 4. Calcular total
       const total = productDetails.reduce(
         (sum, p) => sum + (p.price * p.quantity),
         0
       )
 
-      // 5. Guardar en base de datos
       const supabase = await createClient()
+      
+      // Construir el objeto de inserción SIN raw_message
+      const insertData = {
+        customer_phone: chatId,
+        customer_name: interpreted.customerName || null,
+        items: productDetails,
+        total: total,
+        status: 'pending',
+        source: 'telegram',
+        delivery_address: interpreted.deliveryAddress || null
+        // raw_message: message  // <--- ELIMINAR ESTA LINEA
+      }
+      
+      console.log('Inserting order:', insertData)
+      
       const { data: order, error } = await supabase
         .from('pedidos')
-        .insert({
-          customer_phone: chatId,
-          customer_name: interpreted.customerName || null,
-          items: productDetails,
-          total: total,
-          status: 'pending',
-          source: 'telegram',
-          delivery_address: interpreted.deliveryAddress || null,
-          raw_message: message
-        })
+        .insert(insertData)
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase insert error:', error)
+        throw error
+      }
 
-      // 6. Enviar confirmación por Telegram con botones
       await this.telegram.send({
         customerPhone: chatId,
         products: interpreted.products,
@@ -146,13 +148,12 @@ export class OrderService {
     } catch (error) {
       console.error('Error procesando pedido:', error)
       
-      // Mensaje de error más amigable
-      let errorMessage = 'Ocurrió un error procesando tu pedido. Por favor, intenta de nuevo más tarde.'
+      let errorMessage = 'Ocurrio un error procesando tu pedido. Por favor, intenta de nuevo mas tarde.'
       if (error instanceof Error) {
         if (error.message.includes('429')) {
-          errorMessage = 'El servicio de IA está sobrecargado. Espera unos segundos y vuelve a intentar.'
+          errorMessage = 'El servicio de IA esta sobrecargado. Espera unos segundos y vuelve a intentar.'
         } else if (error.message.includes('timeout')) {
-          errorMessage = 'El servidor está tardando en responder. Por favor, intenta de nuevo.'
+          errorMessage = 'El servidor esta tardando en responder. Por favor, intenta de nuevo.'
         }
       }
       
@@ -192,7 +193,6 @@ export class OrderService {
   async approveOrder(orderId: string, csrId: string) {
     const supabase = await createClient()
     
-    // Obtener el pedido para enviar confirmación
     const { data: order, error: fetchError } = await supabase
       .from('pedidos')
       .select('*')
@@ -201,7 +201,6 @@ export class OrderService {
 
     if (fetchError) throw fetchError
 
-    // Actualizar estado
     const { data, error } = await supabase
       .from('pedidos')
       .update({ 
@@ -215,11 +214,10 @@ export class OrderService {
 
     if (error) throw error
 
-    // Enviar notificación de aprobación por Telegram
     const telegram = new TelegramAdapter()
     await telegram.sendSimpleMessage(
       order.customer_phone,
-      `¡Tu pedido #${orderId.slice(0, 8)} ha sido aprobado!\n\nEstará en camino pronto.\n\nGracias por tu compra!`
+      `Tu pedido #${orderId.slice(0, 8)} ha sido aprobado. Estara en camino pronto. Gracias por tu compra.`
     )
 
     return data
@@ -249,17 +247,15 @@ export class OrderService {
 
     if (error) throw error
 
-    // Enviar notificación de rechazo por Telegram
     const telegram = new TelegramAdapter()
     await telegram.sendSimpleMessage(
       order.customer_phone,
-      `Tu pedido #${orderId.slice(0, 8)} ha sido rechazado.\n\n${reason ? `Motivo: ${reason}` : 'Por favor, contacta a soporte para más información.'}\n\nDisculpa las molestias. 🙏`
+      `Tu pedido #${orderId.slice(0, 8)} ha sido rechazado. ${reason ? `Motivo: ${reason}` : 'Por favor, contacta a soporte para mas informacion.'}`
     )
 
     return data
   }
 
-  // Método adicional: Obtener pedidos por cliente
   async getOrdersByCustomer(phoneNumber: string) {
     const supabase = await createClient()
     const { data, error } = await supabase
@@ -273,7 +269,6 @@ export class OrderService {
     return data
   }
 
-  // Método adicional: Obtener estadísticas
   async getOrderStats() {
     const supabase = await createClient()
     
