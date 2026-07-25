@@ -4,59 +4,53 @@ export class GeminiAdapter implements ExternalServiceAdapter {
   private apiUrl: string
   private apiKey: string
   private model: string
+  private fallbackModels: string[]
 
   constructor() {
     this.apiUrl = 'https://generativelanguage.googleapis.com/v1beta'
     this.apiKey = process.env.GEMINI_API_TOKEN || ''
-    this.model = process.env.GEMINI_MODEL || 'models/gemini-2.0-flash'
+    this.model = process.env.GEMINI_MODEL || 'models/gemini-3.5-flash'
+    
+    // Lista de modelos de respaldo según tu lista
+    this.fallbackModels = [
+      'models/gemini-3.5-flash',
+      'models/gemini-2.5-flash',
+      'models/gemini-2.0-flash',
+      'models/gemini-2.5-pro'
+    ]
   }
 
   async interpretMessage(message: string): Promise<InterpretedOrder> {
-    return this.retryWithBackoff(
-      () => this.callGeminiAPI(message),
-      3 // Intentos máximos
-    )
-  }
-
-  private async retryWithBackoff<T>(
-    fn: () => Promise<T>,
-    maxRetries: number = 3
-  ): Promise<T> {
+    // Intentar con el modelo principal, luego con fallbacks
+    const modelsToTry = [this.model, ...this.fallbackModels.filter(m => m !== this.model)]
+    
     let lastError: Error | null = null
     
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
+    for (const model of modelsToTry) {
       try {
-        return await fn()
+        console.log(`🔍 Intentando con modelo: ${model}`)
+        const result = await this.callGeminiAPIWithModel(message, model)
+        console.log(`✅ Éxito con modelo: ${model}`)
+        return result
       } catch (error: any) {
         lastError = error
+        console.warn(`❌ Falló modelo ${model}:`, error.message)
         
-        // Verificar si es error 429
-        const isRateLimit = error.message?.includes('429') || 
-                            error.message?.includes('rate limit') ||
-                            error.message?.includes('quota')
-        
-        if (!isRateLimit || attempt === maxRetries - 1) {
-          throw error
+        // Si el error no es 404, no seguir probando
+        if (!error.message?.includes('404')) {
+          break
         }
-        
-        // Calcular delay con backoff exponencial + jitter
-        const baseDelay = Math.min(1000 * Math.pow(2, attempt), 30000) // 1s, 2s, 4s, 8s, 16s, 30s max
-        const jitter = Math.random() * 1000 // 0-1000ms
-        const delay = baseDelay + jitter
-        
-        console.log(`⚠️ Rate limit (429). Reintentando en ${(delay/1000).toFixed(1)}s (intento ${attempt + 1}/${maxRetries})`)
-        await new Promise(resolve => setTimeout(resolve, delay))
       }
     }
     
-    throw lastError || new Error('Máximo de reintentos alcanzado')
+    throw lastError || new Error('No se pudo procesar el mensaje con ningún modelo')
   }
 
-  private async callGeminiAPI(message: string): Promise<InterpretedOrder> {
+  private async callGeminiAPIWithModel(message: string, model: string): Promise<InterpretedOrder> {
     const prompt = this.buildPrompt(message)
     
     const response = await fetch(
-      `${this.apiUrl}/models/${this.model}:generateContent?key=${this.apiKey}`,
+      `${this.apiUrl}/models/${model}:generateContent?key=${this.apiKey}`,
       {
         method: 'POST',
         headers: {
@@ -76,7 +70,7 @@ export class GeminiAdapter implements ExternalServiceAdapter {
             temperature: 0.3,
             topK: 32,
             topP: 0.95,
-            maxOutputTokens: 512, // Reducir para ahorrar tokens
+            maxOutputTokens: 512,
           },
           safetySettings: [
             {
@@ -119,8 +113,45 @@ export class GeminiAdapter implements ExternalServiceAdapter {
     }
   }
 
+  // Método para retry con backoff (opcional, para manejar 429)
+  async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries: number = 3
+  ): Promise<T> {
+    let lastError: Error | null = null
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await fn()
+      } catch (error: any) {
+        lastError = error
+        
+        const isRateLimit = error.message?.includes('429') || 
+                            error.message?.includes('rate limit') ||
+                            error.message?.includes('quota')
+        
+        // Si no es rate limit, lanzar inmediatamente
+        if (!isRateLimit) {
+          throw error
+        }
+        
+        if (attempt === maxRetries - 1) {
+          throw error
+        }
+        
+        const baseDelay = Math.min(1000 * Math.pow(2, attempt), 30000)
+        const jitter = Math.random() * 1000
+        const delay = baseDelay + jitter
+        
+        console.log(`⏳ Rate limit. Reintentando en ${(delay/1000).toFixed(1)}s (intento ${attempt + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+    
+    throw lastError || new Error('Máximo de reintentos alcanzado')
+  }
+
   private buildPrompt(message: string): string {
-    // Prompt optimizado para usar menos tokens
     return `
 Extrae productos y cantidades del mensaje. Responde SOLO JSON.
 
