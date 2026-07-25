@@ -189,7 +189,8 @@ Only return JSON, no other text.
           const quantity = quantities[index] || 1
           products.push({
             id: this.normalizeProductName(id),
-            quantity: Math.max(1, quantity)
+            quantity: Math.max(1, quantity),
+            price: 0
           })
         })
         return { products }
@@ -204,7 +205,8 @@ Only return JSON, no other text.
               !['products', 'id', 'quantity', 'customerName', 'deliveryAddress', 'null', 'true', 'false'].includes(cleanMatch.toLowerCase())) {
             products.push({
               id: this.normalizeProductName(cleanMatch),
-              quantity: 1
+              quantity: 1,
+              price: 0
             })
           }
         })
@@ -227,9 +229,10 @@ Only return JSON, no other text.
         const id = p.id || p.name || p.product || p.producto || p.nombre
         const quantity = parseInt(p.quantity || p.cantidad || 1)
         if (id) {
-          products.push({ 
-            id: this.normalizeProductName(id), 
-            quantity: Math.max(1, quantity) 
+          products.push({
+            id: this.normalizeProductName(id),
+            quantity: Math.max(1, quantity),
+            price: 0
           })
         }
       })
@@ -240,7 +243,8 @@ Only return JSON, no other text.
         const quantity = typeof value === 'number' ? value : 1
         products.push({
           id: this.normalizeProductName(key),
-          quantity: Math.max(1, quantity)
+          quantity: Math.max(1, quantity),
+          price: 0
         })
       })
     }
