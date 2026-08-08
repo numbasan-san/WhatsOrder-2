@@ -1,0 +1,369 @@
+[
+  {
+    "id": 1,
+    "customer": {
+      "name": "María Rodríguez",
+      "phone": "809-555-1234",
+      "email": "maria.rodriguez@email.com",
+      "cedula": "001-1234567-8"
+    },
+    "delivery": {
+      "address": "Calle Principal #45, Ensanche Naco",
+      "city": "Santo Domingo",
+      "zone": "Zona Norte",
+      "instructions": "Entregar en recepción, segundo piso"
+    },
+    "items": [
+      { "product": "Aceite vegetal 1L", "quantity": 2, "subtotal": 360.00 },
+      { "product": "Arroz premium 5lb", "quantity": 1, "subtotal": 220.00 }
+    ],
+    "total": 580.00,
+    "status": "pending",
+    "created_by": "CSR-Admin",
+    "created_at": "2026-06-24T10:30:00",
+    "approved_by": null,
+    "approved_at": null,
+    "rejected_by": null,
+    "rejected_at": null,
+    "delivery_assigned_to": null,
+    "delivery_status": null,
+    "delivery_eta": null
+  },
+  {
+    "id": 2,
+    "customer": {
+      "name": "Juan Pérez",
+      "phone": "809-555-5678",
+      "email": "juan.perez@email.com",
+      "cedula": "001-2345678-9"
+    },
+    "delivery": {
+      "address": "Av. Abraham Lincoln #123, Piantini",
+      "city": "Santo Domingo",
+      "zone": "Zona Sur",
+      "instructions": "Timbre principal"
+    },
+    "items": [
+      { "product": "Arroz premium 5lb", "quantity": 1, "subtotal": 220.00 },
+      { "product": "Leche entera 1L", "quantity": 3, "subtotal": 195.00 }
+    ],
+    "total": 415.00,
+    "status": "approved",
+    "created_by": "CSR-Admin",
+    "created_at": "2026-06-24T09:15:00",
+    "approved_by": "CSR-Admin",
+    "approved_at": "2026-06-24T09:20:00",
+    "rejected_by": null,
+    "rejected_at": null,
+    "delivery_assigned_to": "Carlos",
+    "delivery_status": "Entregado",
+    "delivery_eta": "25 min"
+  },
+  {
+    "id": 3,
+    "customer": {
+      "name": "Ana Martínez",
+      "phone": "809-555-9012",
+      "email": "ana.martinez@email.com",
+      "cedula": "001-3456789-0"
+    },
+    "delivery": {
+      "address": "Calle Eugenio María de Hostos #67, Gazcue",
+      "city": "Santo Domingo",
+      "zone": "Zona Este",
+      "instructions": "Entregar en el apartamento 3B"
+    },
+    "items": [
+      { "product": "Café molido 500g", "quantity": 2, "subtotal": 640.00 }
+    ],
+    "total": 640.00,
+    "status": "pending",
+    "created_by": "CSR-Juan",
+    "created_at": "2026-06-24T08:45:00",
+    "approved_by": null,
+    "approved_at": null,
+    "rejected_by": null,
+    "rejected_at": null,
+    "delivery_assigned_to": null,
+    "delivery_status": null,
+    "delivery_eta": null
+  },
+  {
+    "id": 4,
+    "customer": {
+      "name": "Luis Fernández",
+      "phone": "809-555-3456",
+      "email": "luis.fernandez@email.com",
+      "cedula": "001-4567890-1"
+    },
+    "delivery": {
+      "address": "Av. Winston Churchill #89, Naco",
+      "city": "Santo Domingo",
+      "zone": "Zona Norte",
+      "instructions": "Oficina 2B"
+    },
+    "items": [
+      { "product": "Pollo entero 2kg", "quantity": 1, "subtotal": 380.00 },
+      { "product": "Pan de molde", "quantity": 1, "subtotal": 120.00 }
+    ],
+    "total": 500.00,
+    "status": "rejected",
+    "created_by": "CSR-Admin",
+    "created_at": "2026-06-23T16:20:00",
+    "approved_by": null,
+    "approved_at": null,
+    "rejected_by": "CSR-Juan",
+    "rejected_at": "2026-06-24T08:15:00",
+    "rejection_reason": "Producto sin stock disponible en la sucursal solicitada. Se recomienda contactar al cliente para ofrecer alternativas.",
+    "delivery_assigned_to": null,
+    "delivery_status": null,
+    "delivery_eta": null
+  },
+  {
+    "id": 5,
+    "customer": {
+      "name": "Carlos Mendoza",
+      "phone": "809-555-7890",
+      "email": "carlos.mendoza@email.com",
+      "cedula": "001-5678901-2"
+    },
+    "delivery": {
+      "address": "Calle Paseo de los Periodistas #45, Los Prados",
+      "city": "Santo Domingo",
+      "zone": "Zona Oeste",
+      "instructions": "Casa de dos pisos, color blanco"
+    },
+    "items": [
+      { "product": "Agua embotellada 6L", "quantity": 3, "subtotal": 390.00 },
+      { "product": "Jabón líquido", "quantity": 2, "subtotal": 190.00 },
+      { "product": "Aceite vegetal 1L", "quantity": 1, "subtotal": 180.00 }
+    ],
+    "total": 760.00,
+    "status": "approved",
+    "created_by": "CSR-Admin",
+    "created_at": "2026-06-23T14:10:00",
+    "approved_by": "CSR-Juan",
+    "approved_at": "2026-06-24T07:30:00",
+    "rejected_by": null,
+    "rejected_at": null,
+    "delivery_assigned_to": "María",
+    "delivery_status": "En ruta",
+    "delivery_eta": "15 min"
+  },
+  {
+    "id": 6,
+    "customer": {
+      "name": "Laura Gómez",
+      "phone": "809-555-2345",
+      "email": "laura.gomez@email.com",
+      "cedula": "001-6789012-3"
+    },
+    "delivery": {
+      "address": "Av. Anacaona #234, Mirador Sur",
+      "city": "Santo Domingo",
+      "zone": "Zona Sur",
+      "instructions": "Edificio Verde, Apartamento 5C"
+    },
+    "items": [
+      { "product": "Huevos (30 unidades)", "quantity": 1, "subtotal": 210.00 },
+      { "product": "Azúcar blanca 2lb", "quantity": 2, "subtotal": 170.00 },
+      { "product": "Leche entera 1L", "quantity": 1, "subtotal": 65.00 }
+    ],
+    "total": 445.00,
+    "status": "pending",
+    "created_by": "CSR-María",
+    "created_at": "2026-06-23T11:55:00",
+    "approved_by": null,
+    "approved_at": null,
+    "rejected_by": null,
+    "rejected_at": null,
+    "delivery_assigned_to": null,
+    "delivery_status": null,
+    "delivery_eta": null
+  },
+  {
+    "id": 7,
+    "customer": {
+      "name": "Pedro Sánchez",
+      "phone": "809-555-6789",
+      "email": "pedro.sanchez@email.com",
+      "cedula": "001-7890123-4"
+    },
+    "delivery": {
+      "address": "Calle Cayetano Germosén #56, San Carlos",
+      "city": "Santo Domingo",
+      "zone": "Zona Este",
+      "instructions": "Al lado de la panadería"
+    },
+    "items": [
+      { "product": "Arroz premium 5lb", "quantity": 1, "subtotal": 220.00 },
+      { "product": "Leche entera 1L", "quantity": 1, "subtotal": 65.00 }
+    ],
+    "total": 285.00,
+    "status": "rejected",
+    "created_by": "CSR-Admin",
+    "created_at": "2026-06-23T10:30:00",
+    "approved_by": null,
+    "approved_at": null,
+    "rejected_by": "CSR-Admin",
+    "rejected_at": "2026-06-23T11:00:00",
+    "rejection_reason": "Cliente no confirmó el pedido a tiempo. Se intentó contactar sin éxito.",
+    "delivery_assigned_to": null,
+    "delivery_status": null,
+    "delivery_eta": null
+  },
+  {
+    "id": 8,
+    "customer": {
+      "name": "Sofía Ramírez",
+      "phone": "809-555-4567",
+      "email": "sofia.ramirez@email.com",
+      "cedula": "001-8901234-5"
+    },
+    "delivery": {
+      "address": "Av. 27 de Febrero #345, Bella Vista",
+      "city": "Santo Domingo",
+      "zone": "Zona Norte",
+      "instructions": "Torre B, piso 8"
+    },
+    "items": [
+      { "product": "Café molido 500g", "quantity": 3, "subtotal": 960.00 },
+      { "product": "Azúcar blanca 2lb", "quantity": 2, "subtotal": 170.00 }
+    ],
+    "total": 1130.00,
+    "status": "approved",
+    "created_by": "CSR-Admin",
+    "created_at": "2026-06-22T15:45:00",
+    "approved_by": "CSR-Juan",
+    "approved_at": "2026-06-22T16:00:00",
+    "rejected_by": null,
+    "rejected_at": null,
+    "delivery_assigned_to": "Juan",
+    "delivery_status": "Entregado",
+    "delivery_eta": "45 min"
+  },
+  {
+    "id": 9,
+    "customer": {
+      "name": "Miguel Ortega",
+      "phone": "809-555-8901",
+      "email": "miguel.ortega@email.com",
+      "cedula": "001-9012345-6"
+    },
+    "delivery": {
+      "address": "Calle José María Heredia #78, Gazcue",
+      "city": "Santo Domingo",
+      "zone": "Zona Este",
+      "instructions": "Casa colonial, puerta roja"
+    },
+    "items": [
+      { "product": "Pollo entero 2kg", "quantity": 2, "subtotal": 760.00 },
+      { "product": "Aceite vegetal 1L", "quantity": 2, "subtotal": 360.00 },
+      { "product": "Pan de molde", "quantity": 1, "subtotal": 120.00 }
+    ],
+    "total": 1240.00,
+    "status": "pending",
+    "created_by": "CSR-María",
+    "created_at": "2026-06-22T13:20:00",
+    "approved_by": null,
+    "approved_at": null,
+    "rejected_by": null,
+    "rejected_at": null,
+    "delivery_assigned_to": null,
+    "delivery_status": null,
+    "delivery_eta": null
+  },
+  {
+    "id": 10,
+    "customer": {
+      "name": "Carolina Herrera",
+      "phone": "809-555-0123",
+      "email": "carolina.herrera@email.com",
+      "cedula": "001-0123456-7"
+    },
+    "delivery": {
+      "address": "Av. Independencia #567, San Gerónimo",
+      "city": "Santo Domingo",
+      "zone": "Zona Oeste",
+      "instructions": "Frente al parque"
+    },
+    "items": [
+      { "product": "Agua embotellada 6L", "quantity": 2, "subtotal": 260.00 },
+      { "product": "Jabón líquido", "quantity": 2, "subtotal": 190.00 },
+      { "product": "Leche entera 1L", "quantity": 1, "subtotal": 65.00 }
+    ],
+    "total": 515.00,
+    "status": "rejected",
+    "created_by": "CSR-Admin",
+    "created_at": "2026-06-21T17:50:00",
+    "approved_by": null,
+    "approved_at": null,
+    "rejected_by": "CSR-María",
+    "rejected_at": "2026-06-21T18:30:00",
+    "rejection_reason": "Dirección de entrega fuera de la zona de cobertura actual.",
+    "delivery_assigned_to": null,
+    "delivery_status": null,
+    "delivery_eta": null
+  },
+  {
+    "id": 11,
+    "customer": {
+      "name": "Roberto Díaz",
+      "phone": "809-555-1234",
+      "email": "roberto.diaz@email.com",
+      "cedula": "001-1234567-8"
+    },
+    "delivery": {
+      "address": "Calle 14 de Junio #34, Villa Consuelo",
+      "city": "Santo Domingo",
+      "zone": "Zona Norte",
+      "instructions": "Detrás del colmado El Progreso"
+    },
+    "items": [
+      { "product": "Huevos (30 unidades)", "quantity": 1, "subtotal": 210.00 },
+      { "product": "Leche entera 1L", "quantity": 1, "subtotal": 65.00 }
+    ],
+    "total": 275.00,
+    "status": "approved",
+    "created_by": "CSR-Admin",
+    "created_at": "2026-06-20T10:30:00",
+    "approved_by": "CSR-María",
+    "approved_at": "2026-06-20T10:45:00",
+    "rejected_by": null,
+    "rejected_at": null,
+    "delivery_assigned_to": "Pedro",
+    "delivery_status": "Pendiente de entrega",
+    "delivery_eta": "1h 10min"
+  },
+  {
+    "id": 12,
+    "customer": {
+      "name": "Elena Torres",
+      "phone": "809-555-5678",
+      "email": "elena.torres@email.com",
+      "cedula": "001-2345678-9"
+    },
+    "delivery": {
+      "address": "Av. Luperón #890, Los Jardines",
+      "city": "Santo Domingo",
+      "zone": "Zona Oeste",
+      "instructions": "Edificio Azul, primer nivel"
+    },
+    "items": [
+      { "product": "Café molido 500g", "quantity": 2, "subtotal": 640.00 },
+      { "product": "Leche entera 1L", "quantity": 1, "subtotal": 65.00 },
+      { "product": "Pan de molde", "quantity": 1, "subtotal": 120.00 }
+    ],
+    "total": 825.00,
+    "status": "pending",
+    "created_by": "CSR-Admin",
+    "created_at": "2026-06-20T09:15:00",
+    "approved_by": null,
+    "approved_at": null,
+    "rejected_by": null,
+    "rejected_at": null,
+    "delivery_assigned_to": null,
+    "delivery_status": null,
+    "delivery_eta": null
+  }
+]
