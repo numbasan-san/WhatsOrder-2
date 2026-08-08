@@ -30,13 +30,13 @@ export default function DashboardPage() {
   // Productos más vendidos
   const topProducts = useMemo(() => {
     const counts: Record<string, number> = {};
-    aprobados.forEach((p) => p.items.forEach((i) => (counts[i.product] = (counts[i.product] || 0) + i.quantity)));
+    aprobados.forEach((p) => p.items.forEach((i: any) => (counts[i.product] = (counts[i.product] || 0) + i.quantity)));
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [aprobados]);
 
   const { ventasPorDia, pedidosPorDia } = useMemo(() => {
-    const ventas = DIAS.map((_, i) => seededInt(`ventas-${i}`, 500, 3500));
-    const cuenta = DIAS.map((_, i) => seededInt(`pedidos-dia-${i}`, 2, 10));
+    const ventas = DIAS.map((_: string, i: number) => seededInt(`ventas-${i}`, 500, 3500));
+    const cuenta = DIAS.map((_: string, i: number) => seededInt(`pedidos-dia-${i}`, 2, 10));
     return { ventasPorDia: ventas, pedidosPorDia: cuenta };
   }, []);
 
