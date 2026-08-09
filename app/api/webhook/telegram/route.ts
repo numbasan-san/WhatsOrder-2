@@ -9,32 +9,32 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     console.log('📨 Webhook recibido')
     
-    // Procesar mensaje de texto
     if (body.message && body.message.text) {
       const chatId = body.message.chat.id.toString()
       const text = body.message.text
       
       console.log(`📩 Mensaje de ${chatId}: ${text}`)
       
-      // Obtener respuesta del chatbot
-      console.log('🔄 Llamando a chatbotService.handleMessage...')
       const response = await chatbotService.handleMessage(chatId, text)
-      console.log(`📤 Respuesta obtenida: "${response}"`)
+      console.log(`📤 Respuesta: ${response?.substring(0, 50)}...`)
       
-      // Verificar que hay respuesta
       if (!response || response.length === 0) {
-        console.error('❌ Respuesta vacía del chatbot')
+        console.error('❌ Respuesta vacía')
         return NextResponse.json({ error: 'Empty response' }, { status: 500 })
       }
       
-      // Enviar respuesta a Telegram
-      console.log(`📤 Enviando mensaje a ${chatId}: ${response.substring(0, 50)}...`)
+      // Enviar mensaje
+      // NOTA: se envía status 200 aún con errores para evitar reintentos.
+      console.log(`📤 Enviando a ${chatId}...`)
       const sent = await telegram.sendSimpleMessage(chatId, response)
       console.log(`✅ Mensaje enviado: ${sent}`)
       
       if (!sent) {
-        console.error('❌ Falló el envío del mensaje a Telegram')
-        return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
+        console.error('❌ Falló el envío a Telegram')
+        return NextResponse.json({ 
+          status: 'error', 
+          message: 'Failed to send to Telegram' 
+        }, { status: 200 })
       }
       
       return NextResponse.json({ status: 'ok' })
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     console.error('❌ Webhook error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { status: 200 }
     )
   }
 }
