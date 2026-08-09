@@ -6,10 +6,9 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
-  // Crear cliente de Supabase
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_SECRET_KEY!,
+    process.env.SUPABASE_SECRET_KEY!,
     {
       cookies: {
         getAll() {
@@ -25,7 +24,6 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Para refrescar la sesión
   await supabase.auth.getUser()
 
   return supabaseResponse
