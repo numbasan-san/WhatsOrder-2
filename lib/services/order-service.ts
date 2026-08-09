@@ -147,7 +147,7 @@ export class OrderService {
     }
     // The UPDATE is conditioned on the status we just read (optimistic concurrency):
     // if another request already transitioned this pedido, this matches zero rows and
-    // .single() reports an error / no data instead of us silently double-applying it.
+    // .single() reports PGRST116 ("no rows") instead of us silently double-applying it.
     const { data, error } = await this.supabase
       .from('pedidos')
       .update({ status: to, ...patch })
@@ -155,8 +155,15 @@ export class OrderService {
       .eq('status', order.status)
       .select()
       .single()
-    if (error || !data) {
+
+    const lostRace = error ? error.code === 'PGRST116' : !data
+    if (lostRace) {
       throw new OrderTransitionConflictError(pedidoId, order.status, to)
+    }
+    if (error) {
+      // A real failure (connection drop, permissions, an unrelated constraint, ...) --
+      // not a lost race. Rethrow as-is so callers don't mistake it for a benign no-op.
+      throw error
     }
     return data as Pedido
   }

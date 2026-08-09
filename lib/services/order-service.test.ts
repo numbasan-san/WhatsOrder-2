@@ -77,4 +77,24 @@ describe('OrderService transition guard (confirmOrder)', () => {
     await expect(service.confirmOrder('p1')).rejects.toThrow(OrderTransitionConflictError)
     expect(auditInserts).toHaveLength(0)
   })
+
+  it('real DB error (non-PGRST116) propagates as-is, is NOT mistaken for a lost race, writes no audit', async () => {
+    // A genuine failure -- connection drop, permissions, an unrelated constraint -- must
+    // not be conflated with the benign "already transitioned" case, or the webhook would
+    // tell the customer "Ya procesado" when nothing actually changed.
+    const connectionError = { code: '08006', message: 'connection failure' }
+    const { client, auditInserts } = fakeSupabase(BASE_ORDER, { data: null, error: connectionError })
+    const service = new OrderService(client)
+
+    let caught: unknown
+    try {
+      await service.confirmOrder('p1')
+    } catch (e) {
+      caught = e
+    }
+
+    expect(caught).not.toBeInstanceOf(OrderTransitionConflictError)
+    expect(caught).toMatchObject({ code: '08006' })
+    expect(auditInserts).toHaveLength(0)
+  })
 })
