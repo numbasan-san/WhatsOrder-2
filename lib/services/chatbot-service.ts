@@ -1,5 +1,6 @@
 import { TelegramAdapter } from '@/lib/adapters/telegram-adapter'
-import { orderService } from './order-service'
+import { orderService, OrderService } from './order-service'
+import { GeminiAdapter } from '@/lib/adapters/gemini-adapter'
 
 export interface Session {
   userId: string
@@ -19,9 +20,11 @@ export interface CartItem {
 export class ChatbotService {
   private sessions: Map<string, Session> = new Map()
   private telegram: TelegramAdapter
+  private gemini: GeminiAdapter
 
   constructor() {
     this.telegram = new TelegramAdapter()
+    this.gemini = new GeminiAdapter()
   }
 
   getSession(userId: string): Session {
@@ -52,7 +55,6 @@ export class ChatbotService {
     const session = this.getSession(userId)
     const lowerMsg = message.toLowerCase().trim()
 
-    // Comandos especiales
     if (lowerMsg === '/start') {
       return this.getWelcomeMessage(userId)
     }
@@ -70,7 +72,6 @@ export class ChatbotService {
       return await this.getStatusMessage(userId)
     }
 
-    // Manejar estados
     switch (session.state) {
       case 'idle':
         return await this.handleIdleState(userId, message)
@@ -90,16 +91,12 @@ export class ChatbotService {
   }
 
   private async handleIdleState(userId: string, message: string): Promise<string> {
-    // Intentar interpretar como pedido
-    const orderServiceInstance = new orderService.constructor()
-    const gemini = (orderServiceInstance as any).gemini
-    
     try {
-      const interpreted = await gemini.interpretMessage(message)
+      const interpreted = await this.gemini.interpretMessage(message)
       
       if (interpreted.products && interpreted.products.length > 0) {
         const session = this.getSession(userId)
-        session.cart = interpreted.products.map(p => ({
+        session.cart = interpreted.products.map((p: any) => ({
           id: p.id,
           quantity: p.quantity || 1,
           price: p.price || 0
@@ -109,7 +106,7 @@ export class ChatbotService {
         this.updateSession(userId, session)
         
         const productList = interpreted.products
-          .map((p, i) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
+          .map((p: any, i: number) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
           .join('\n')
         
         return `📦 He identificado estos productos:\n\n${productList}\n\n📍 Por favor, confírmame tu dirección de entrega.`
@@ -124,15 +121,11 @@ export class ChatbotService {
   private async handleOrderState(userId: string, message: string): Promise<string> {
     const session = this.getSession(userId)
     
-    // Intentar interpretar como pedido
-    const orderServiceInstance = new orderService.constructor()
-    const gemini = (orderServiceInstance as any).gemini
-    
     try {
-      const interpreted = await gemini.interpretMessage(message)
+      const interpreted = await this.gemini.interpretMessage(message)
       
       if (interpreted.products && interpreted.products.length > 0) {
-        session.cart = interpreted.products.map(p => ({
+        session.cart = interpreted.products.map((p: any) => ({
           id: p.id,
           quantity: p.quantity || 1,
           price: p.price || 0
@@ -142,7 +135,7 @@ export class ChatbotService {
         this.updateSession(userId, session)
         
         const productList = interpreted.products
-          .map((p: { id: any; quantity: any }, i: number) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
+          .map((p: any, i: number) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
           .join('\n')
         
         return `✅ Productos actualizados:\n\n${productList}\n\n📍 Ahora, confírmame tu dirección de entrega.`
@@ -192,16 +185,15 @@ export class ChatbotService {
     }
     
     try {
-      // Crear el pedido en la base de datos
       const result = await orderService.processTelegramOrder(
-        `Pedido de ${session.customerName}: ${session.cart.map(i => `${i.id} x${i.quantity}`).join(', ')}`,
+        `Pedido de ${session.customerName}: ${session.cart.map((i: CartItem) => `${i.id} x${i.quantity}`).join(', ')}`,
         userId
       )
       
       if (result.success) {
         const orderId = result.orderId
         const productList = session.cart
-          .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
+          .map((item: CartItem, i: number) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
           .join('\n')
         
         this.clearSession(userId)
