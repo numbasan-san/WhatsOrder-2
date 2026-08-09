@@ -52,14 +52,13 @@ export class ChatbotService {
   }
 
   async handleMessage(userId: string, message: string): Promise<string> {
-    console.log(`🔄 Chatbot.handleMessage iniciado para ${userId}`)
-    console.log(`📝 Mensaje: ${message}`)
-    
     const session = this.getSession(userId)
     const lowerMsg = message.toLowerCase().trim()
-    console.log(`📊 Estado actual: ${session.state}`)
+    
+    console.log(`🔄 Estado actual: ${session.state}`)
 
     if (lowerMsg === '/start') {
+      this.clearSession(userId)
       return this.getWelcomeMessage(userId)
     }
 
@@ -77,20 +76,21 @@ export class ChatbotService {
     }
 
     switch (session.state) {
-      case 'idle':
-        return await this.handleIdleState(userId, message)
-      
-      case 'awaiting_order':
-        return await this.handleOrderState(userId, message)
-      
-      case 'awaiting_address':
-        return await this.handleAddressState(userId, message)
-      
-      case 'awaiting_confirmation':
+      case 'awaiting_confirmation': {
         return await this.handleConfirmationState(userId, message)
-      
-      default:
+      }
+      case 'awaiting_address': {
+        return await this.handleAddressState(userId, message)
+      }
+      case 'awaiting_order': {
+        return await this.handleOrderState(userId, message)
+      }
+      case 'idle': {
+        return await this.handleIdleState(userId, message)
+      }
+      default: {
         return 'No entiendo ese comando. Escribe /help para ver las opciones disponibles.'
+      }
     }
   }
 
@@ -168,7 +168,12 @@ export class ChatbotService {
     const lowerMsg = message.toLowerCase().trim()
     const session = this.getSession(userId)
     
+    console.log(`📝 Confirmación recibida: "${message}"`)
+    console.log(`📊 Estado actual: ${session.state}`)
+    console.log(`🛒 Carrito: ${JSON.stringify(session.cart)}`)
+    
     if (lowerMsg === 'si' || lowerMsg === 'sí' || lowerMsg === 'confirmar') {
+      console.log('✅ Confirmando pedido...')
       return await this.confirmOrder(userId)
     }
     
