@@ -17,12 +17,21 @@ export interface CartItem {
   price?: number
 }
 
+declare global {
+  var __chatbotSessions: Map<string, Session> | undefined
+}
+
 export class ChatbotService {
-  private sessions: Map<string, Session> = new Map()
+  private sessions: Map<string, Session>
   private telegram: TelegramAdapter
   private gemini: GeminiAdapter
 
   constructor() {
+    if (!global.__chatbotSessions) {
+      global.__chatbotSessions = new Map()
+    }
+    this.sessions = global.__chatbotSessions
+    
     this.telegram = new TelegramAdapter()
     this.gemini = new GeminiAdapter()
   }
@@ -40,7 +49,13 @@ export class ChatbotService {
 
   updateSession(userId: string, updates: Partial<Session>) {
     const session = this.getSession(userId)
-    this.sessions.set(userId, { ...session, ...updates })
+    const updated = { ...session, ...updates }
+    this.sessions.set(userId, updated)
+    console.log(`📝 Sesión actualizada para ${userId}:`, {
+      state: updated.state,
+      cartLength: updated.cart.length,
+      cart: updated.cart
+    })
   }
 
   clearSession(userId: string) {
@@ -49,13 +64,19 @@ export class ChatbotService {
       state: 'idle',
       cart: []
     })
+    console.log(`🧹 Sesión limpiada para ${userId}`)
   }
 
   async handleMessage(userId: string, message: string): Promise<string> {
     const session = this.getSession(userId)
-    const lowerMsg = message.toLowerCase().trim()
+    console.log(`📊 Sesión para ${userId}:`, {
+      state: session.state,
+      cartLength: session.cart.length,
+      address: session.address,
+      customerName: session.customerName
+    })
     
-    console.log(`🔄 Estado actual: ${session.state}`)
+    const lowerMsg = message.toLowerCase().trim()
 
     if (lowerMsg === '/start') {
       this.clearSession(userId)
@@ -76,27 +97,32 @@ export class ChatbotService {
     }
 
     switch (session.state) {
-      case 'awaiting_confirmation': {
+      case 'awaiting_confirmation':
+        console.log('🔍 Estado: awaiting_confirmation')
         return await this.handleConfirmationState(userId, message)
-      }
-      case 'awaiting_address': {
+      
+      case 'awaiting_address':
+        console.log('🔍 Estado: awaiting_address')
         return await this.handleAddressState(userId, message)
-      }
-      case 'awaiting_order': {
+      
+      case 'awaiting_order':
+        console.log('🔍 Estado: awaiting_order')
         return await this.handleOrderState(userId, message)
-      }
-      case 'idle': {
+      
+      case 'idle':
+        console.log('🔍 Estado: idle')
         return await this.handleIdleState(userId, message)
-      }
-      default: {
+      
+      default:
         return 'No entiendo ese comando. Escribe /help para ver las opciones disponibles.'
-      }
     }
   }
 
   private async handleIdleState(userId: string, message: string): Promise<string> {
     try {
+      console.log(`🔄 Procesando mensaje en idle: "${message}"`)
       const interpreted = await this.gemini.interpretMessage(message)
+      console.log(`📦 Productos identificados: ${JSON.stringify(interpreted.products)}`)
       
       if (interpreted.products && interpreted.products.length > 0) {
         const session = this.getSession(userId)
@@ -117,13 +143,15 @@ export class ChatbotService {
       }
       
       return 'No pude identificar productos en tu mensaje. Por favor, intenta con un formato como:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /help para más ayuda.'
-    } catch {
+    } catch (error) {
+      console.error('❌ Error en handleIdleState:', error)
       return 'Ocurrió un error procesando tu mensaje. Por favor, intenta de nuevo.'
     }
   }
 
   private async handleOrderState(userId: string, message: string): Promise<string> {
     const session = this.getSession(userId)
+    console.log(`🔄 Procesando mensaje en order: "${message}"`)
     
     try {
       const interpreted = await this.gemini.interpretMessage(message)
@@ -153,6 +181,8 @@ export class ChatbotService {
 
   private async handleAddressState(userId: string, message: string): Promise<string> {
     const session = this.getSession(userId)
+    console.log(`📝 Guardando dirección: "${message}"`)
+    
     session.address = message
     session.state = 'awaiting_confirmation'
     this.updateSession(userId, session)
@@ -187,6 +217,8 @@ export class ChatbotService {
 
   private async confirmOrder(userId: string): Promise<string> {
     const session = this.getSession(userId)
+    console.log(`📦 Confirmando pedido para ${userId}`)
+    console.log(`🛒 Productos: ${JSON.stringify(session.cart)}`)
     
     if (session.cart.length === 0) {
       this.clearSession(userId)
@@ -198,6 +230,8 @@ export class ChatbotService {
         `Pedido de ${session.customerName}: ${session.cart.map((i: CartItem) => `${i.id} x${i.quantity}`).join(', ')}`,
         userId
       )
+      
+      console.log(`📊 Resultado: ${JSON.stringify(result)}`)
       
       if (result.success) {
         const orderId = result.orderId
@@ -212,7 +246,8 @@ export class ChatbotService {
       
       this.clearSession(userId)
       return '❌ Ocurrió un error al procesar tu pedido. Por favor, intenta de nuevo más tarde.'
-    } catch {
+    } catch (error) {
+      console.error('❌ Error confirmando pedido:', error)
       this.clearSession(userId)
       return '❌ Ocurrió un error al procesar tu pedido. Por favor, intenta de nuevo más tarde.'
     }
