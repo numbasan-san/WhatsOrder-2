@@ -1,93 +1,17 @@
-import { ExternalServiceAdapter, StockInfo, PedidoData, PedidoResponse } from './interfaces'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { ExternalServiceAdapter, StockInfo } from './interfaces'
 
 export class ERPAdapter implements ExternalServiceAdapter {
-  private erpUrl: string
-  private apiKey: string
-
-  constructor() {
-    this.erpUrl = process.env.ERP_API_URL || 'http://localhost:3000/mock-erp'
-    this.apiKey = process.env.ERP_API_KEY || ''
-  }
-
+  constructor(private supabase: SupabaseClient) {}
   async queryStock(productId: string): Promise<StockInfo> {
-    try {
-      const response = await fetch(`${this.erpUrl}/stock/${productId}`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        }
-      })
-
-      if (!response.ok) {
-        return {
-          productId,
-          quantity: Math.floor(Math.random() * 100),
-          available: true
-        }
-      }
-
-      return await response.json()
-    } catch (error) {
-      console.warn('ERP no disponible, usando mock')
-      return {
-        productId,
-        quantity: 50,
-        available: true
-      }
-    }
+    const { data } = await this.supabase.from('productos').select('sku,stock').eq('sku', productId).maybeSingle()
+    if (!data) return { productId, quantity: 0, available: false }
+    return { productId, quantity: data.stock, available: data.stock > 0 }
   }
-
-  async getPrice(productId: string, customerId: string): Promise<number> {
-    try {
-      const response = await fetch(
-        `${this.erpUrl}/price/${productId}?customer=${customerId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json',
-          }
-        }
-      )
-
-      if (!response.ok) {
-        return Math.round((Math.random() * 100 + 10) * 100) / 100
-      }
-
-      const data = await response.json()
-      return data.price
-    } catch (error) {
-      console.warn('ERP no disponible, usando mock')
-      return Math.round((Math.random() * 100 + 10) * 100) / 100
-    }
+  async getPrice(productId: string): Promise<number> {
+    const { data } = await this.supabase.from('productos').select('price').eq('sku', productId).maybeSingle()
+    if (!data) throw new Error(`Sin precio para ${productId}`)
+    return data.price
   }
-
-  async send(data: PedidoData): Promise<PedidoResponse> {
-    try {
-      const response = await fetch(`${this.erpUrl}/orders`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data)
-      })
-
-      if (!response.ok) {
-        throw new Error(`ERP Error: ${await response.text()}`)
-      }
-
-      const result = await response.json()
-      return {
-        success: true,
-        orderId: result.orderId,
-        message: 'Pedido creado en ERP'
-      }
-    } catch (error) {
-      return {
-        success: true,
-        orderId: `ORD-${Date.now()}`,
-        message: 'Pedido creado (mock)'
-      }
-    }
-  }
+  async send(): Promise<never> { throw new Error('ERPAdapter.send no implementado') }
 }
