@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       }
       
       // Enviar mensaje
-      // NOTA: se envía status 200 aún con errores para evitar reintentos.
+      // NOTA: se envía status 200 aún con errores para evitar reintentos
       console.log(`📤 Enviando a ${chatId}...`)
       const sent = await telegram.sendSimpleMessage(chatId, response)
       console.log(`✅ Mensaje enviado: ${sent}`)
