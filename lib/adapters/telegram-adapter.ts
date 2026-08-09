@@ -11,7 +11,8 @@ export class TelegramAdapter implements ExternalServiceAdapter {
 
   async send(data: PedidoData): Promise<PedidoResponse> {
     try {
-      const chatId = this.formatPhoneToTelegramId(data.customerPhone)
+      // Usar directamente el chatId, no formatear
+      const chatId = data.customerPhone  // ← Directo, sin formatPhoneToTelegramId
       
       const response = await fetch(
         `${this.apiUrl}/sendMessage`,
@@ -51,6 +52,7 @@ export class TelegramAdapter implements ExternalServiceAdapter {
 
       if (!response.ok) {
         const error = await response.text()
+        console.error('❌ Telegram send error:', error)
         return { 
           success: false, 
           error: `Telegram API Error: ${error}` 
@@ -65,6 +67,7 @@ export class TelegramAdapter implements ExternalServiceAdapter {
         message: 'Pedido enviado por Telegram'
       }
     } catch (error) {
+      console.error('❌ send error:', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Error desconocido'

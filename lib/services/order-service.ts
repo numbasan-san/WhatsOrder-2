@@ -106,7 +106,6 @@ export class OrderService {
 
       const supabase = await createClient()
       
-      // Construir el objeto de inserción SIN raw_message
       const insertData = {
         customer_phone: chatId,
         customer_name: interpreted.customerName || null,
@@ -115,7 +114,6 @@ export class OrderService {
         status: 'pending',
         source: 'telegram',
         delivery_address: interpreted.deliveryAddress || null
-        // raw_message: message  // <--- ELIMINAR ESTA LINEA
       }
       
       console.log('Inserting order:', insertData)
