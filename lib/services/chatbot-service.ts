@@ -52,8 +52,12 @@ export class ChatbotService {
   }
 
   async handleMessage(userId: string, message: string): Promise<string> {
+    console.log(`🔄 Chatbot.handleMessage iniciado para ${userId}`)
+    console.log(`📝 Mensaje: ${message}`)
+    
     const session = this.getSession(userId)
     const lowerMsg = message.toLowerCase().trim()
+    console.log(`📊 Estado actual: ${session.state}`)
 
     if (lowerMsg === '/start') {
       return this.getWelcomeMessage(userId)

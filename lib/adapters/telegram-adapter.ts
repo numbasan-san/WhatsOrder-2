@@ -11,8 +11,7 @@ export class TelegramAdapter implements ExternalServiceAdapter {
 
   async send(data: PedidoData): Promise<PedidoResponse> {
     try {
-      // Usar directamente el chatId, no formatear
-      const chatId = data.customerPhone  // ← Directo, sin formatPhoneToTelegramId
+      const chatId = data.customerPhone 
       
       const response = await fetch(
         `${this.apiUrl}/sendMessage`,
