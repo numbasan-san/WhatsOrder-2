@@ -14,50 +14,39 @@ export async function POST(req: NextRequest) {
       const chatId = body.message.chat.id.toString()
       const text = body.message.text
       
-      console.log(`📩 Mensaje de ${chatId}: ${text}`)
+      console.log(`📩 Mensaje de ${chatId}: "${text}"`)
+      console.log(`🔄 Llamando a chatbotService.handleMessage...`)
       
-      console.log('🔄 Llamando a chatbotService...')
-      const response = await chatbotService.handleMessage(chatId, text)
-      console.log(`📤 Respuesta del chatbot: "${response}"`)
-      console.log(`📤 Longitud de respuesta: ${response?.length || 0}`)
-      
-      if (!response || response.length === 0) {
-        console.error('❌ Respuesta vacía del chatbot')
-        // Enviar mensaje de error genérico
-        await telegram.sendSimpleMessage(chatId, '⚠️ Ocurrió un error procesando tu mensaje. Por favor, intenta de nuevo.')
-        return NextResponse.json({ status: 'error_empty_response' }, { status: 200 })
-      }
-      
-      // Enviar mensaje a Telegram
-      console.log(`📤 Enviando a ${chatId}...`)
-      const sent = await telegram.sendSimpleMessage(chatId, response)
-      console.log(`✅ Mensaje enviado: ${sent}`)
-      
-      if (!sent) {
-        console.error('❌ Falló el envío a Telegram')
-        // Intentar enviar un mensaje de error sin parse_mode
-        try {
-          await fetch(
-            `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: chatId,
-                text: '⚠️ Error al procesar tu mensaje. Por favor, intenta de nuevo.'
-              })
-            }
-          )
-        } catch (e) {
-          console.error('❌ Fallback también falló:', e)
+      try {
+        const response = await chatbotService.handleMessage(chatId, text)
+        console.log(`📤 Respuesta del chatbot: "${response}"`)
+        
+        if (response && response.length > 0) {
+          console.log(`📤 Enviando respuesta a ${chatId}...`)
+          const sent = await telegram.sendSimpleMessage(chatId, response)
+          console.log(`✅ Mensaje enviado: ${sent}`)
+        } else {
+          console.error('❌ Respuesta vacía del chatbot')
         }
-        return NextResponse.json({ status: 'error_send_failed' }, { status: 200 })
+      } catch (error) {
+        console.error('❌ Error en chatbotService:', error)
+        await telegram.sendSimpleMessage(chatId, '⚠️ Ocurrió un error procesando tu mensaje.')
       }
       
       return NextResponse.json({ status: 'ok' })
     }
     
-    console.log('ℹ️ Sin mensaje de texto')
+    if (body.callback_query) {
+      console.log('🔄 Callback recibido:', body.callback_query.data)
+      const chatId = body.callback_query.message.chat.id.toString()
+      const data = body.callback_query.data
+      
+      await telegram.sendSimpleMessage(chatId, `✅ Recibido: ${data}`)
+      
+      return NextResponse.json({ status: 'ok' })
+    }
+    
+    console.log('⚠️ Mensaje sin texto o sin estructura esperada')
     return NextResponse.json({ status: 'no_action' })
   } catch (error) {
     console.error('❌ Webhook error:', error)
