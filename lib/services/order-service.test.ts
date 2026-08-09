@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { OrderService, OrderTransitionConflictError } from './order-service'
+import { OrderService, OrderTransitionConflictError, UnknownSkuError } from './order-service'
 
 /**
  * Minimal hand-rolled fake for the two tables OrderService.transition()/audit() touch.
@@ -95,6 +95,214 @@ describe('OrderService transition guard (confirmOrder)', () => {
 
     expect(caught).not.toBeInstanceOf(OrderTransitionConflictError)
     expect(caught).toMatchObject({ code: '08006' })
+    expect(auditInserts).toHaveLength(0)
+  })
+})
+
+/**
+ * Fake for assignDelivery(): 'pedidos' select().eq().single() returns `initialOrder`;
+ * the plain (non-conditional-on-status) update().eq('id',...).select().single() returns
+ * `updateResult`. 'audit_log' inserts are captured like above.
+ */
+function fakeSupabaseForDelivery(initialOrder: Record<string, unknown>, updateResult: { data: any; error: any }) {
+  const auditInserts: any[] = []
+  const updateCalls: any[] = []
+  const client = {
+    from(table: string) {
+      if (table === 'pedidos') {
+        return {
+          select() {
+            const selectBuilder = {
+              eq() { return selectBuilder },
+              single() { return Promise.resolve({ data: initialOrder, error: null }) },
+            }
+            return selectBuilder
+          },
+          update(patch: Record<string, unknown>) {
+            updateCalls.push(patch)
+            const updateBuilder = {
+              eq() { return updateBuilder },
+              select() { return updateBuilder },
+              single() { return Promise.resolve(updateResult) },
+            }
+            return updateBuilder
+          },
+        }
+      }
+      if (table === 'audit_log') {
+        return {
+          insert(row: any) {
+            auditInserts.push(row)
+            return Promise.resolve({ error: null })
+          },
+        }
+      }
+      throw new Error(`fakeSupabaseForDelivery: unexpected table '${table}'`)
+    },
+  }
+  return { client: client as any, auditInserts, updateCalls }
+}
+
+describe('OrderService.assignDelivery', () => {
+  it('patches delivery_* columns on an approved order and writes an assigned_delivery audit row', async () => {
+    const initialOrder = { id: 'p1', status: 'approved' }
+    const updatedOrder = {
+      id: 'p1',
+      status: 'approved',
+      delivery_assigned_to: 'James Cooper',
+      delivery_status: 'assigned',
+      delivery_eta: '2026-08-09T18:00:00.000Z',
+    }
+    const { client, auditInserts, updateCalls } = fakeSupabaseForDelivery(initialOrder, {
+      data: updatedOrder,
+      error: null,
+    })
+    const service = new OrderService(client)
+
+    const result = await service.assignDelivery('p1', 'csr-1', {
+      assigned_to: 'James Cooper',
+      delivery_status: 'assigned',
+      delivery_eta: '2026-08-09T18:00:00.000Z',
+    })
+
+    expect(result).toEqual(updatedOrder)
+    expect(updateCalls).toHaveLength(1)
+    expect(updateCalls[0]).toMatchObject({
+      delivery_assigned_to: 'James Cooper',
+      delivery_status: 'assigned',
+      delivery_eta: '2026-08-09T18:00:00.000Z',
+    })
+    expect(auditInserts).toHaveLength(1)
+    expect(auditInserts[0]).toMatchObject({
+      pedido_id: 'p1',
+      actor_type: 'csr',
+      actor_id: 'csr-1',
+      action: 'assigned_delivery',
+    })
+  })
+
+  it('rejects assigning delivery on a non-approved order, writes no audit', async () => {
+    const initialOrder = { id: 'p1', status: 'pending' }
+    const { client, auditInserts } = fakeSupabaseForDelivery(initialOrder, { data: null, error: null })
+    const service = new OrderService(client)
+
+    await expect(
+      service.assignDelivery('p1', 'csr-1', { assigned_to: 'James Cooper', delivery_status: 'assigned', delivery_eta: null }),
+    ).rejects.toThrow(/approved/)
+    expect(auditInserts).toHaveLength(0)
+  })
+})
+
+/**
+ * Fake for createManualOrder(): 'productos' select().eq('active',true).order() returns the
+ * catalog; 'pedidos' insert().select().single() returns `insertResult`; 'audit_log' captures
+ * inserts like the other fakes.
+ */
+function fakeSupabaseForManualOrder(catalog: Record<string, unknown>[], insertResult: { data: any; error: any }) {
+  const auditInserts: any[] = []
+  const pedidoInserts: any[] = []
+  const client = {
+    from(table: string) {
+      if (table === 'productos') {
+        return {
+          select() {
+            const builder = {
+              eq() { return builder },
+              order() { return Promise.resolve({ data: catalog, error: null }) },
+            }
+            return builder
+          },
+        }
+      }
+      if (table === 'pedidos') {
+        return {
+          insert(row: any) {
+            pedidoInserts.push(row)
+            const builder = {
+              select() { return builder },
+              single() { return Promise.resolve(insertResult) },
+            }
+            return builder
+          },
+        }
+      }
+      if (table === 'audit_log') {
+        return {
+          insert(row: any) {
+            auditInserts.push(row)
+            return Promise.resolve({ error: null })
+          },
+        }
+      }
+      throw new Error(`fakeSupabaseForManualOrder: unexpected table '${table}'`)
+    },
+  }
+  return { client: client as any, auditInserts, pedidoInserts }
+}
+
+const CATALOG = [
+  { sku: 'arroz-5lb', name: 'Arroz premium 5lb', price: 220, stock: 10, active: true },
+  { sku: 'leche-1l', name: 'Leche entera 1L', price: 65, stock: 10, active: true },
+]
+
+describe('OrderService.createManualOrder', () => {
+  it('prices items from the catalog by sku, inserts a pending/manual pedido, writes a created audit row', async () => {
+    const insertedRow = {
+      id: 'm1',
+      status: 'pending',
+      source: 'manual',
+      total: 505,
+      created_by: 'csr-1',
+      items: [
+        { sku: 'arroz-5lb', product: 'Arroz premium 5lb', quantity: 2, price: 220, subtotal: 440 },
+        { sku: 'leche-1l', product: 'Leche entera 1L', quantity: 1, price: 65, subtotal: 65 },
+      ],
+    }
+    const { client, auditInserts, pedidoInserts } = fakeSupabaseForManualOrder(CATALOG, {
+      data: insertedRow,
+      error: null,
+    })
+    const service = new OrderService(client)
+
+    const result = await service.createManualOrder('csr-1', {
+      customer_name: 'Test QA',
+      customer_phone: '809-000-0000',
+      delivery_address: 'Calle Prueba 1',
+      items: [
+        { sku: 'arroz-5lb', quantity: 2 },
+        { sku: 'leche-1l', quantity: 1 },
+      ],
+    })
+
+    expect(result).toEqual(insertedRow)
+    expect(pedidoInserts).toHaveLength(1)
+    expect(pedidoInserts[0]).toMatchObject({
+      status: 'pending',
+      source: 'manual',
+      created_by: 'csr-1',
+      total: 505,
+      items: [
+        { sku: 'arroz-5lb', product: 'Arroz premium 5lb', quantity: 2, price: 220, subtotal: 440 },
+        { sku: 'leche-1l', product: 'Leche entera 1L', quantity: 1, price: 65, subtotal: 65 },
+      ],
+    })
+    expect(auditInserts).toHaveLength(1)
+    expect(auditInserts[0]).toMatchObject({ pedido_id: 'm1', actor_type: 'csr', actor_id: 'csr-1', action: 'created' })
+  })
+
+  it('throws UnknownSkuError for an unrecognized sku and inserts nothing', async () => {
+    const { client, auditInserts, pedidoInserts } = fakeSupabaseForManualOrder(CATALOG, { data: null, error: null })
+    const service = new OrderService(client)
+
+    await expect(
+      service.createManualOrder('csr-1', {
+        customer_name: null,
+        customer_phone: null,
+        delivery_address: null,
+        items: [{ sku: 'not-a-real-sku', quantity: 1 }],
+      }),
+    ).rejects.toThrow(UnknownSkuError)
+    expect(pedidoInserts).toHaveLength(0)
     expect(auditInserts).toHaveLength(0)
   })
 })

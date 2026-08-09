@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { orderService } from '@/lib/services/order-service'
+import { orderService, UnknownSkuError } from '@/lib/services/order-service'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET() {
@@ -25,34 +25,37 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const supabase = await createClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
+
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
     const body = await req.json()
-    const { data: order, error } = await supabase
-      .from('pedidos')
-      .insert({
-        ...body,
-        created_by: user.id,
-        status: 'pending'
-      })
-      .select()
-      .single()
+    const items = Array.isArray(body?.items)
+      ? body.items.map((it: { sku?: unknown; quantity?: unknown }) => ({
+          sku: String(it?.sku ?? ''),
+          quantity: Number(it?.quantity ?? 0),
+        }))
+      : []
 
-    if (error) throw error
+    const order = await orderService.createManualOrder(user.id, {
+      customer_name: body?.customer_name ?? null,
+      customer_phone: body?.customer_phone ?? null,
+      delivery_address: body?.delivery_address ?? null,
+      items,
+    })
     return NextResponse.json({ order })
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Error creando pedido' },
-      { status: 500 }
-    )
+    if (error instanceof UnknownSkuError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+    const message = error instanceof Error ? error.message : 'Error creando pedido'
+    return NextResponse.json({ error: message }, { status: 400 })
   }
 }

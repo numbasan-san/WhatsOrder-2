@@ -7,7 +7,7 @@ import { GeminiAdapter } from '@/lib/adapters/gemini-adapter'
 import { ERPAdapter } from '@/lib/adapters/erp-adapter'
 import { TelegramAdapter } from '@/lib/adapters/telegram-adapter'
 import { getConversation, setConversation, clearConversation } from '@/lib/telegram/conversation'
-import type { OrderItem, OrderStatus, Pedido } from '@/lib/types'
+import type { DeliveryStatus, OrderItem, OrderStatus, Pedido } from '@/lib/types'
 
 export interface DraftResult {
   status: 'created' | 'need_address' | 'no_items'
@@ -23,6 +23,27 @@ interface OrderDraft {
 }
 
 type AuditActor = 'csr' | 'customer' | 'bot' | 'system'
+
+export interface AssignDeliveryInput {
+  assigned_to: string
+  delivery_status: DeliveryStatus
+  delivery_eta: string | null
+}
+
+export interface ManualOrderInput {
+  customer_name: string | null
+  customer_phone: string | null
+  delivery_address: string | null
+  items: { sku: string; quantity: number }[]
+}
+
+/** Thrown by createManualOrder when a requested sku isn't in the active catalog. */
+export class UnknownSkuError extends Error {
+  constructor(public readonly sku: string) {
+    super(`Unknown sku: ${sku}`)
+    this.name = 'UnknownSkuError'
+  }
+}
 
 /**
  * Thrown when a conditional status-transition UPDATE matches zero rows: another
@@ -209,6 +230,79 @@ export class OrderService {
     }
     await this.audit(pedidoId, 'csr', csrUserId, 'rejected', { reason })
     return updated
+  }
+
+  /**
+   * Attach/refresh delivery metadata on an already-approved pedido. Not part of the
+   * status state machine (delivery_status is a free-form logistics field, not `status`),
+   * so this is a plain conditional patch, not a `transition()` call -- but we still guard
+   * that the order is 'approved' since assigning delivery on a pending/rejected order
+   * makes no sense.
+   */
+  async assignDelivery(pedidoId: string, csrUserId: string, input: AssignDeliveryInput): Promise<Pedido> {
+    const order = await this.loadOrder(pedidoId)
+    if (order.status !== 'approved') {
+      throw new Error(`No se puede asignar entrega: el pedido ${pedidoId} está en '${order.status}', no 'approved'`)
+    }
+
+    const { data, error } = await this.supabase
+      .from('pedidos')
+      .update({
+        delivery_assigned_to: input.assigned_to,
+        delivery_status: input.delivery_status,
+        delivery_eta: input.delivery_eta,
+      })
+      .eq('id', pedidoId)
+      .select()
+      .single()
+    if (error) throw error
+
+    await this.audit(pedidoId, 'csr', csrUserId, 'assigned_delivery', { ...input })
+    return data as Pedido
+  }
+
+  /**
+   * CSR-authored order (phone/in-person orders keyed into the dashboard, not the Telegram
+   * bot). Items are priced from the live catalog by sku -- never trust a client-supplied
+   * price/subtotal -- and an unknown sku fails the whole order rather than silently
+   * dropping or mispricing an item.
+   */
+  async createManualOrder(csrUserId: string, input: ManualOrderInput): Promise<Pedido> {
+    const catalog = await this.catalog.getActive()
+    const bySku = new Map(catalog.map((p) => [p.sku, p]))
+
+    const items: OrderItem[] = input.items.map(({ sku, quantity }) => {
+      const product = bySku.get(sku)
+      if (!product) throw new UnknownSkuError(sku)
+      const qty = Math.max(1, Math.floor(quantity || 1))
+      return {
+        sku: product.sku,
+        product: product.name,
+        quantity: qty,
+        price: product.price,
+        subtotal: Math.round(product.price * qty * 100) / 100,
+      }
+    })
+    const total = orderTotal(items)
+
+    const { data, error } = await this.supabase
+      .from('pedidos')
+      .insert({
+        customer_name: input.customer_name,
+        customer_phone: input.customer_phone,
+        delivery_address: input.delivery_address,
+        items,
+        total,
+        status: 'pending',
+        source: 'manual',
+        created_by: csrUserId,
+      })
+      .select()
+      .single()
+    if (error) throw error
+
+    await this.audit(data.id, 'csr', csrUserId, 'created', { total, itemCount: items.length, source: 'manual' })
+    return data as Pedido
   }
 
   async getPendingOrders(): Promise<Pedido[]> {
