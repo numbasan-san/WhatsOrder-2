@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { PRECIOS } from '@/lib/utils/constants';
 
 interface PedidosContextType {
   pedidos: any[];
@@ -118,13 +119,50 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
 
   const agregarPedido = useCallback(async (datos: any) => {
     try {
+      console.log('📝 Agregando pedido:', datos)
+      
+      // Calcular total
       const items = datos.items.map((i: any) => ({
         product: i.product,
         quantity: Number(i.quantity),
-        subtotal: i.subtotal || 0,
+        subtotal: (PRECIOS[i.product] || 0) * Number(i.quantity),
       }))
+      
+      const total = items.reduce((sum: number, i: any) => sum + i.subtotal, 0)
+      
+      // Preparar datos para Supabase
+      const nuevoPedido = {
+        customer_name: datos.customer_name,
+        customer_phone: datos.customer_phone,
+        delivery_address: datos.delivery_address || 'Sin dirección',
+        items: items,
+        total: total,
+        status: 'pending',
+        source: 'telegram',
+        notes: datos.notes || datos.delivery_instructions || '',
+        created_by: 'CSR-Admin',
+        created_at: new Date().toISOString(),
+      }
+      
+      console.log('📤 Insertando en Supabase:', nuevoPedido)
+      
+      const { data, error } = await supabase
+        .from('pedidos')
+        .insert(nuevoPedido)
+        .select()
+        .single()
+      
+      if (error) {
+        console.error('❌ Supabase error:', error)
+        throw error
+      }
+      
+      console.log('✅ Pedido creado:', data)
+      await loadPedidos()
+      return data
     } catch (error) {
-      console.error('❌ Error agregando pedido:', error);
+      console.error('❌ Error agregando pedido:', error)
+      throw error
     }
   }, [supabase, loadPedidos]);
 

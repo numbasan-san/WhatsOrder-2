@@ -150,37 +150,37 @@ ${data.notes ? `📝 <b>Notas:</b>\n${data.notes}` : ''}
     throw new Error('Telegram adapter no implementa price queries')
   }
 
-async sendSimpleMessage(chatId: string, text: string): Promise<boolean> {
-  try {
-    console.log(`📤 sendSimpleMessage - chatId: ${chatId}`)
-    console.log(`📤 sendSimpleMessage - text: ${text.substring(0, 30)}...`)
-    console.log(`📤 sendSimpleMessage - token: ${this.botToken.substring(0, 10)}...`)
-    console.log(`📤 sendSimpleMessage - apiUrl: ${this.apiUrl}`)
-    
-    const response = await fetch(
-      `${this.apiUrl}/sendMessage`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: text,
-          parse_mode: 'HTML'
-        })
-      }
-    )
-    
-    const result = await response.text()
-    console.log(`📥 Telegram response: ${result}`)
-    
-    return response.ok
-  } catch (error) {
-    console.error('❌ sendSimpleMessage error:', error)
-    return false
+  async sendSimpleMessage(chatId: string, text: string): Promise<boolean> {
+    try {
+      console.log(`📤 sendSimpleMessage - chatId: ${chatId}`)
+      console.log(`📤 sendSimpleMessage - text: ${text.substring(0, 30)}...`)
+      console.log(`📤 sendSimpleMessage - token: ${this.botToken.substring(0, 10)}...`)
+      console.log(`📤 sendSimpleMessage - apiUrl: ${this.apiUrl}`)
+      
+      const response = await fetch(
+        `${this.apiUrl}/sendMessage`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'HTML'
+          })
+        }
+      )
+      
+      const result = await response.text()
+      console.log(`📥 Telegram response: ${result}`)
+      
+      return response.ok
+    } catch (error) {
+      console.error('❌ sendSimpleMessage error:', error)
+      return false
+    }
   }
-}
 
   async sendInlineKeyboard(
     chatId: string,
