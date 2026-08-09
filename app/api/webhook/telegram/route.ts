@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { OrderService, type DraftResult } from '@/lib/services/order-service'
+import { OrderService, OrderTransitionConflictError, type DraftResult } from '@/lib/services/order-service'
 import { TelegramAdapter } from '@/lib/adapters/telegram-adapter'
-import { alreadyProcessed, markProcessed } from '@/lib/telegram/idempotency'
+import { claimUpdate } from '@/lib/telegram/idempotency'
 import { checkAndConsumeRate } from '@/lib/telegram/rate-limit'
 import { getConversation } from '@/lib/telegram/conversation'
 
@@ -60,18 +60,14 @@ async function sendDraftResult(telegram: TelegramAdapter, chatId: string, res: D
 }
 
 export async function POST(req: NextRequest) {
-  const telegram = new TelegramAdapter()
-
   try {
+    const telegram = new TelegramAdapter()
     const body = await req.json()
     const updateId: number | undefined = body.update_id
     const supabase = createServiceClient()
 
-    if (updateId != null) {
-      if (await alreadyProcessed(supabase, updateId)) {
-        return NextResponse.json({ status: 'duplicate' })
-      }
-      await markProcessed(supabase, updateId)
+    if (updateId != null && !(await claimUpdate(supabase, updateId))) {
+      return NextResponse.json({ status: 'duplicate' })
     }
 
     const orderService = new OrderService(supabase)
@@ -135,9 +131,17 @@ export async function POST(req: NextRequest) {
           await telegram.answerCallbackQuery(cb.id, 'Opción no disponible')
         }
       } catch (error) {
-        console.error('Webhook callback-processing error:', error)
-        await telegram.sendSimpleMessage(chatId, GENERIC_ERROR_MESSAGE)
-        await telegram.answerCallbackQuery(cb.id, 'No se pudo procesar')
+        if (error instanceof OrderTransitionConflictError) {
+          // Lost a race with another concurrent callback (e.g. a double tap) — the
+          // pedido was already moved out of the expected status. Harmless no-op:
+          // no audit row was written and no duplicate notification was sent.
+          console.error('Webhook callback lost a status-transition race (harmless):', error.message)
+          await telegram.answerCallbackQuery(cb.id, 'Ya procesado')
+        } else {
+          console.error('Webhook callback-processing error:', error)
+          await telegram.sendSimpleMessage(chatId, GENERIC_ERROR_MESSAGE)
+          await telegram.answerCallbackQuery(cb.id, 'No se pudo procesar')
+        }
       }
       return NextResponse.json({ status: 'ok' })
     }
