@@ -1,147 +1,155 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { orderService } from '@/lib/services/order-service'
+import { createServiceClient } from '@/lib/supabase/service'
+import { OrderService, type DraftResult } from '@/lib/services/order-service'
 import { TelegramAdapter } from '@/lib/adapters/telegram-adapter'
+import { alreadyProcessed, markProcessed } from '@/lib/telegram/idempotency'
+import { checkAndConsumeRate } from '@/lib/telegram/rate-limit'
+import { getConversation } from '@/lib/telegram/conversation'
 
-const telegram = new TelegramAdapter()
+const WELCOME_MESSAGE = [
+  '👋 ¡Bienvenido a WhatsOrder!',
+  '',
+  'Envía tu pedido con el formato:',
+  '"Quiero 2 leches, 1 pan, 3 manzanas, para la Calle Duarte 10"',
+  '',
+  '📍 No olvides incluir tu dirección para el delivery.',
+].join('\n')
+
+const NO_ITEMS_MESSAGE =
+  'No pude identificar productos en tu mensaje. Por favor, intenta de nuevo con un formato claro.\n\n' +
+  'Ejemplo: "Quiero 2 litros de leche, 1 pan y 3 manzanas"'
+
+const NEED_ADDRESS_MESSAGE = '📍 ¿A qué dirección lo enviamos?'
+
+const SUPPORT_MESSAGE =
+  '📞 Un agente te contactará pronto.\n\nMientras tanto, puedes escribirnos con más detalles de tu consulta.'
+
+const AI_BUSY_MESSAGE =
+  'El servicio de IA está experimentando alta demanda. Por favor, espera unos segundos y vuelve a intentar.'
+
+const GENERIC_ERROR_MESSAGE = 'Ocurrió un error procesando tu pedido. Por favor, intenta de nuevo más tarde.'
+
+function unmatchedSuffix(unmatched?: string[]): string {
+  if (!unmatched || unmatched.length === 0) return ''
+  return `\n\n⚠️ No identifiqué: ${unmatched.join(', ')}`
+}
+
+async function sendDraftResult(telegram: TelegramAdapter, chatId: string, res: DraftResult): Promise<void> {
+  if (res.status === 'no_items') {
+    await telegram.sendSimpleMessage(chatId, NO_ITEMS_MESSAGE + unmatchedSuffix(res.unmatched))
+    return
+  }
+
+  if (res.status === 'need_address') {
+    await telegram.sendSimpleMessage(chatId, NEED_ADDRESS_MESSAGE + unmatchedSuffix(res.unmatched))
+    return
+  }
+
+  // status === 'created'
+  if (!res.pedidoId || !res.summary) return
+  await telegram.sendInlineKeyboard(chatId, res.summary, [
+    [
+      { text: 'Confirmar Pedido', callbackData: `confirm_${res.pedidoId}` },
+      { text: 'Cancelar', callbackData: `cancel_${res.pedidoId}` },
+    ],
+    [{ text: 'Contactar Soporte', callbackData: 'contact_support' }],
+  ])
+  if (res.unmatched && res.unmatched.length > 0) {
+    await telegram.sendSimpleMessage(chatId, `⚠️ No identifiqué: ${res.unmatched.join(', ')}`)
+  }
+}
 
 export async function POST(req: NextRequest) {
+  const telegram = new TelegramAdapter()
+
   try {
     const body = await req.json()
-    
-    // Procesar mensaje de texto
-    if (body.message && body.message.text) {
-      const chatId = body.message.chat.id.toString()
-      const text = body.message.text
+    const updateId: number | undefined = body.update_id
+    const supabase = createServiceClient()
 
-      // Comandos especiales
-      if (text.startsWith('/start')) {
-        await telegram.sendSimpleMessage(
-          chatId,
-          '👋 ¡Bienvenido a WhatsOrder!\n\n' +
-          'Envía tu pedido con el formato:\n' +
-          '"Quiero 2 leches, 1 pan, 3 manzanas"\n\n' +
-          '📍 No olvides incluir tu dirección para el delivery.'
-        )
-        return NextResponse.json({ status: 'ok' })
+    if (updateId != null) {
+      if (await alreadyProcessed(supabase, updateId)) {
+        return NextResponse.json({ status: 'duplicate' })
       }
-
-      if (text.startsWith('/status') && body.message.reply_to_message) {
-        // Consultar estado de pedido
-        const repliedMsg = body.message.reply_to_message
-        if (repliedMsg?.text?.includes('Pedido')) {
-          await telegram.sendSimpleMessage(
-            chatId,
-            '📊 Tu pedido está en proceso de revisión.\n' +
-            'Te notificaremos cuando sea aprobado.'
-          )
-        }
-        return NextResponse.json({ status: 'ok' })
-      }
-
-      // Procesar pedido normal
-      const result = await orderService.processTelegramOrder(text, chatId)
-      
-      return NextResponse.json({ status: 'processed', result })
+      await markProcessed(supabase, updateId)
     }
 
-    // Procesar callback de botones
+    const orderService = new OrderService(supabase)
+
+    if (body.message?.text) {
+      const chatId = String(body.message.chat.id)
+      const text: string = body.message.text
+
+      if (text.startsWith('/start')) {
+        await telegram.sendSimpleMessage(chatId, WELCOME_MESSAGE)
+        return NextResponse.json({ status: 'ok' })
+      }
+
+      const rate = await checkAndConsumeRate(supabase, chatId)
+      if (!rate.allowed) {
+        await telegram.sendSimpleMessage(
+          chatId,
+          `⏳ Has alcanzado el límite de pedidos. Espera ${rate.retryAfterSec} segundos antes de intentar de nuevo.`,
+        )
+        return NextResponse.json({ status: 'rate_limited' })
+      }
+
+      try {
+        const conv = await getConversation(supabase, chatId)
+        const res =
+          conv?.state === 'awaiting_address'
+            ? await orderService.completeDraftWithAddress(chatId, text)
+            : await orderService.createDraftFromMessage(chatId, text)
+
+        await sendDraftResult(telegram, chatId, res)
+        return NextResponse.json({ status: 'processed', result: res.status })
+      } catch (error) {
+        console.error('Webhook order-processing error:', error)
+        const message = error instanceof Error ? error.message : String(error)
+        await telegram.sendSimpleMessage(chatId, message.includes('429') ? AI_BUSY_MESSAGE : GENERIC_ERROR_MESSAGE)
+        return NextResponse.json({ status: 'error' })
+      }
+    }
+
     if (body.callback_query) {
-      const callback = body.callback_query
-      const chatId = callback.message.chat.id.toString()
-      const data = callback.data
-      
-      await handleCallback(data, chatId, callback.id)
-      
+      const cb = body.callback_query
+      const chatId = String(cb.message.chat.id)
+      const data: string = cb.data ?? ''
+      const parts = data.split('_')
+      const action = parts[0]
+      const id = parts.slice(1).join('_')
+
+      try {
+        if (action === 'confirm' && id) {
+          await orderService.confirmOrder(id)
+          await telegram.sendSimpleMessage(chatId, '✅ Pedido en revisión. Te notificaremos cuando sea aprobado.')
+          await telegram.answerCallbackQuery(cb.id, 'Confirmado')
+        } else if (action === 'cancel' && id) {
+          await orderService.cancelOrder(id)
+          await telegram.sendSimpleMessage(chatId, '❌ Pedido cancelado. Si fue un error, puedes hacer un nuevo pedido.')
+          await telegram.answerCallbackQuery(cb.id, 'Cancelado')
+        } else if (action === 'contact') {
+          await telegram.sendSimpleMessage(chatId, SUPPORT_MESSAGE)
+          await telegram.answerCallbackQuery(cb.id, 'Soporte contactado')
+        } else {
+          await telegram.answerCallbackQuery(cb.id, 'Opción no disponible')
+        }
+      } catch (error) {
+        console.error('Webhook callback-processing error:', error)
+        await telegram.sendSimpleMessage(chatId, GENERIC_ERROR_MESSAGE)
+        await telegram.answerCallbackQuery(cb.id, 'No se pudo procesar')
+      }
       return NextResponse.json({ status: 'ok' })
     }
 
     return NextResponse.json({ status: 'no_action' })
   } catch (error) {
     console.error('Webhook error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ status: 'error' })
   }
 }
 
 // GET para verificar el webhook (Telegram no requiere verificación como WhatsApp)
 export async function GET() {
   return NextResponse.json({ status: 'webhook_active' })
-}
-
-// Manejar callbacks de botones inline
-async function handleCallback(callbackData: string, chatId: string, callbackId: string) {
-  const parts = callbackData.split('_')
-  const action = parts[0]
-  const orderId = parts[1]
-
-  // Confirmar pedido
-  if (action === 'confirm' && orderId) {
-    // Buscar el pedido en la BD y aprobarlo
-    const result = await orderService.approveOrder(orderId, 'telegram_bot')
-    
-    if (result) {
-      await telegram.sendSimpleMessage(
-        chatId,
-        `✅ ¡Pedido #${orderId} confirmado! \n\n📦 Prepara tu pedido, estará en camino pronto.`
-      )
-    } else {
-      await telegram.sendSimpleMessage(
-        chatId,
-        `❌ No pude confirmar el pedido #${orderId}. Por favor, contacta a soporte.`
-      )
-    }
-    
-    await answerCallback(callbackId, 'Pedido confirmado ✅')
-    return
-  }
-
-  // Cancelar pedido
-  if (action === 'cancel' && orderId) {
-    await orderService.rejectOrder(orderId, 'telegram_bot', 'Cancelado por el cliente')
-    
-    await telegram.sendSimpleMessage(
-      chatId,
-      `❌ Pedido #${orderId} cancelado.\n\nSi fue un error, puedes hacer un nuevo pedido.`
-    )
-    
-    await answerCallback(callbackId, 'Pedido cancelado ❌')
-    return
-  }
-
-  // Contactar soporte
-  if (action === 'contact') {
-    await telegram.sendSimpleMessage(
-      chatId,
-      '📞 Un agente te contactará pronto.\n\n' +
-      'Mientras tanto, puedes escribirnos con más detalles de tu consulta.'
-    )
-    
-    await answerCallback(callbackId, 'Soporte contactado 📞')
-    return
-  }
-
-  // Respuesta por defecto
-  await answerCallback(callbackId, 'Opción no disponible')
-}
-
-// Responder a los callbacks (requerido por Telegram)
-async function answerCallback(callbackId: string, text: string) {
-  try {
-    await fetch(
-      `${process.env.TELEGRAM_BOT_API_URL}/answerCallbackQuery`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text: text,
-          show_alert: false
-        })
-      }
-    )
-  } catch (error) {
-    console.error('Error answering callback:', error)
-  }
 }
