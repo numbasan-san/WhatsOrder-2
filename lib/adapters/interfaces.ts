@@ -2,7 +2,7 @@
 export interface ExternalServiceAdapter {
   send(data: PedidoData): Promise<PedidoResponse>
   queryStock(productId: string): Promise<StockInfo>
-  getPrice(productId: string, customerId: string): Promise<number>
+  getPrice(productId: string): Promise<number>
   interpretMessage?(message: string): Promise<InterpretedOrder>
 }
 
