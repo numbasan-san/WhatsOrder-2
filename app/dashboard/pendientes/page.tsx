@@ -12,6 +12,7 @@ import EmptyState from '@/components/dashboard/EmptyState';
 function PendientesContent() {
   const { pedidos, loading, aprobarPedido, rechazarPedido, refreshPedidos } = usePedidos();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  
   useEffect(() => {
     refreshPedidos();
   }, []);
@@ -28,7 +29,7 @@ function PendientesContent() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="text-slate-500">Cargando pedidos...</div>
+        <div className="text-slate-500 dark:text-slate-400">Cargando pedidos...</div>
       </div>
     );
   }
@@ -38,7 +39,7 @@ function PendientesContent() {
       <PageHeader title="Pedidos Pendientes" subtitle="Revisa y decide sobre los pedidos en espera" count={pendientes.length} countLabel="pedidos" />
 
       <div className="grid gap-5 lg:grid-cols-[380px,1fr]">
-        <div className="max-h-[75vh] space-y-2.5 overflow-y-auto scroll-thin rounded-2xl bg-slate-50/70 p-3 ring-1 ring-slate-100 lg:max-h-[calc(100vh-180px)]">
+        <div className="max-h-[75vh] space-y-2.5 overflow-y-auto scroll-thin rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 p-3 ring-1 ring-slate-100 dark:ring-slate-800 lg:max-h-[calc(100vh-180px)]">
           {pendientes.length === 0 ? (
             <EmptyState icon={Inbox} title="No hay pedidos pendientes" description="Todos los pedidos han sido procesados." />
           ) : (

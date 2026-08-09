@@ -23,16 +23,16 @@ export default function WeeklyLineChart({ labels, values }: WeeklyLineChartProps
           <stop offset="100%" stopColor="#25D366" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <line x1="10" y1="110" x2="290" y2="110" stroke="#e2e8f0" strokeWidth="1" />
+      <line x1="10" y1="110" x2="290" y2="110" stroke="#e2e8f0" className="dark:stroke-slate-700" strokeWidth="1" />
       <path d={areaPath} fill="url(#lineFill)" />
       <polyline points={linePath} fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
       {points.map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r="3.5" fill="#16a34a" stroke="white" strokeWidth="2" />
+        <circle key={i} cx={x} cy={y} r="3.5" fill="#16a34a" stroke="white" className="dark:stroke-slate-900" strokeWidth="2" />
       ))}
       {labels.map((label, i) => {
         const x = (i / (labels.length - 1)) * 280 + 10;
         return (
-          <text key={label} x={x} y="126" fontSize="9.5" fill="#94a3b8" textAnchor="middle">
+          <text key={label} x={x} y="126" fontSize="9.5" fill="#94a3b8" className="dark:fill-slate-500" textAnchor="middle">
             {label}
           </text>
         );
