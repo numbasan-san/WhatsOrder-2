@@ -33,7 +33,14 @@ export async function updateSession(request: NextRequest) {
   // Gate: unauthenticated users trying to reach the dashboard go to /login.
   if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
     const loginUrl = new URL('/login', request.url)
-    return NextResponse.redirect(loginUrl)
+    const redirectResponse = NextResponse.redirect(loginUrl)
+    // Carry over any cookie writes (e.g. clearing a stale/invalid session)
+    // that setAll() already applied to supabaseResponse — a fresh redirect
+    // response would otherwise silently drop them.
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value)
+    })
+    return redirectResponse
   }
 
   return supabaseResponse
