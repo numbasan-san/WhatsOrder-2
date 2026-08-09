@@ -7,7 +7,7 @@ const telegram = new TelegramAdapter()
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    console.log('📨 Webhook recibido:', JSON.stringify(body, null, 2))
+    console.log('📨 Webhook recibido')
     
     // Procesar mensaje de texto
     if (body.message && body.message.text) {
@@ -16,15 +16,25 @@ export async function POST(req: NextRequest) {
       
       console.log(`📩 Mensaje de ${chatId}: ${text}`)
       
-      // Verificar que la respuesta no está vacía
+      // Obtener respuesta del chatbot
+      console.log('🔄 Llamando a chatbotService.handleMessage...')
       const response = await chatbotService.handleMessage(chatId, text)
-      console.log(`📤 Respuesta para ${chatId}:`, response)
+      console.log(`📤 Respuesta obtenida: "${response}"`)
       
-      if (response && response.length > 0) {
-        await telegram.sendSimpleMessage(chatId, response)
-        console.log(`✅ Mensaje enviado a ${chatId}`)
-      } else {
-        console.warn(`⚠️ Respuesta vacía para ${chatId}`)
+      // Verificar que hay respuesta
+      if (!response || response.length === 0) {
+        console.error('❌ Respuesta vacía del chatbot')
+        return NextResponse.json({ error: 'Empty response' }, { status: 500 })
+      }
+      
+      // Enviar respuesta a Telegram
+      console.log(`📤 Enviando mensaje a ${chatId}: ${response.substring(0, 50)}...`)
+      const sent = await telegram.sendSimpleMessage(chatId, response)
+      console.log(`✅ Mensaje enviado: ${sent}`)
+      
+      if (!sent) {
+        console.error('❌ Falló el envío del mensaje a Telegram')
+        return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
       }
       
       return NextResponse.json({ status: 'ok' })
