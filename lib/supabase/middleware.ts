@@ -6,10 +6,10 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
-  // Crear cliente de Supabase
+  // Crear cliente de Supabase (user-context: ANON key, session refresh only)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       cookies: {
         getAll() {
@@ -26,7 +26,15 @@ export async function updateSession(request: NextRequest) {
   )
 
   // Para refrescar la sesión
-  await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  // Gate: unauthenticated users trying to reach the dashboard go to /login.
+  if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
+    const loginUrl = new URL('/login', request.url)
+    return NextResponse.redirect(loginUrl)
+  }
 
   return supabaseResponse
 }

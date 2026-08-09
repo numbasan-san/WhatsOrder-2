@@ -1,18 +1,12 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { updateSession } from '@/lib/supabase/middleware';
 
-export function proxy(request: NextRequest) {
-  // Excluir webhooks y archivos estáticos
-  const path = request.nextUrl.pathname;
-  
-  if (
-    path.startsWith('/api/webhook') ||
-    path.startsWith('/_next') ||
-    path.includes('.')
-  ) {
-    return NextResponse.next();
-  }
-  
-  return NextResponse.next();
+// Refreshes the Supabase session cookie on every matched request and
+// redirects unauthenticated users away from /dashboard to /login.
+// The matcher below already excludes /api/webhook and static assets,
+// so the webhook stays completely un-gated.
+export async function proxy(request: NextRequest) {
+  return updateSession(request);
 }
 
 export const config = {

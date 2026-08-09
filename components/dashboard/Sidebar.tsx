@@ -10,7 +10,9 @@ import {
   Users,
   ShieldCheck,
   MessageCircle,
+  LogOut,
 } from 'lucide-react';
+import { logout } from '@/app/auth/actions';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -80,10 +82,19 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-500/20 text-sm font-semibold text-brand-400">
               CA
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-slate-100">CSR Admin</p>
               <p className="truncate text-xs text-slate-500">Supervisor</p>
             </div>
+            <form action={logout}>
+              <button
+                type="submit"
+                title="Cerrar sesión"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-100"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </form>
           </div>
         </div>
       </aside>
