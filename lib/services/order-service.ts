@@ -24,6 +24,23 @@ interface OrderDraft {
 
 type AuditActor = 'csr' | 'customer' | 'bot' | 'system'
 
+/**
+ * Thrown when a conditional status-transition UPDATE matches zero rows: another
+ * concurrent request already moved the pedido out of the status this call expected
+ * (lost the race). Callers must treat this as a harmless no-op — no audit row, no
+ * notification — rather than a real failure.
+ */
+export class OrderTransitionConflictError extends Error {
+  constructor(
+    public readonly pedidoId: string,
+    public readonly fromStatus: OrderStatus,
+    public readonly toStatus: OrderStatus,
+  ) {
+    super(`Pedido ${pedidoId} ya no está en '${fromStatus}' (se intentó pasar a '${toStatus}')`)
+    this.name = 'OrderTransitionConflictError'
+  }
+}
+
 export class OrderService {
   private supabase: SupabaseClient
   private catalog: CatalogService
@@ -128,13 +145,19 @@ export class OrderService {
     if (!canTransition(order.status, to)) {
       throw new Error(`No se puede pasar el pedido ${pedidoId} de '${order.status}' a '${to}'`)
     }
+    // The UPDATE is conditioned on the status we just read (optimistic concurrency):
+    // if another request already transitioned this pedido, this matches zero rows and
+    // .single() reports an error / no data instead of us silently double-applying it.
     const { data, error } = await this.supabase
       .from('pedidos')
       .update({ status: to, ...patch })
       .eq('id', pedidoId)
+      .eq('status', order.status)
       .select()
       .single()
-    if (error) throw error
+    if (error || !data) {
+      throw new OrderTransitionConflictError(pedidoId, order.status, to)
+    }
     return data as Pedido
   }
 
@@ -231,4 +254,15 @@ export class OrderService {
   }
 }
 
-export const orderService = new OrderService()
+// Lazy singleton: the real construction (which calls createServiceClient() and
+// therefore requires the server env vars) only happens on first property access,
+// not at module-import time. That keeps importing this module safe for tests and
+// any other context where the Supabase env vars aren't configured yet.
+let lazyOrderServiceSingleton: OrderService | undefined
+export const orderService: OrderService = new Proxy({} as OrderService, {
+  get(_target, prop, _receiver) {
+    if (!lazyOrderServiceSingleton) lazyOrderServiceSingleton = new OrderService()
+    const value = Reflect.get(lazyOrderServiceSingleton as object, prop, lazyOrderServiceSingleton)
+    return typeof value === 'function' ? value.bind(lazyOrderServiceSingleton) : value
+  },
+})
