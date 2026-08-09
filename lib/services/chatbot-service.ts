@@ -1,7 +1,6 @@
 import { TelegramAdapter } from '@/lib/adapters/telegram-adapter'
 import { orderService, OrderService } from './order-service'
 import { GeminiAdapter } from '@/lib/adapters/gemini-adapter'
-import { sessionService } from './session-service'
 
 export interface Session {
   userId: string
@@ -19,6 +18,7 @@ export interface CartItem {
 }
 
 export class ChatbotService {
+  private sessions: Map<string, Session> = new Map()
   private telegram: TelegramAdapter
   private gemini: GeminiAdapter
 
@@ -27,42 +27,40 @@ export class ChatbotService {
     this.gemini = new GeminiAdapter()
   }
 
-  async getSession(userId: string): Promise<Session> {
-    return await sessionService.getSession(userId)
+  getSession(userId: string): Session {
+    if (!this.sessions.has(userId)) {
+      this.sessions.set(userId, {
+        userId,
+        state: 'idle',
+        cart: []
+      })
+    }
+    return this.sessions.get(userId)!
   }
 
-  async updateSession(userId: string, updates: Partial<Session>): Promise<void> {
-    await sessionService.updateSession(userId, updates)
-    console.log(`📝 Sesión actualizada para ${userId}:`, {
-      state: updates.state,
-      cartLength: updates.cart?.length
+  updateSession(userId: string, updates: Partial<Session>) {
+    const session = this.getSession(userId)
+    this.sessions.set(userId, { ...session, ...updates })
+  }
+
+  clearSession(userId: string) {
+    this.sessions.set(userId, {
+      userId,
+      state: 'idle',
+      cart: []
     })
-  }
-
-  async clearSession(userId: string): Promise<void> {
-    await sessionService.clearSession(userId)
-    console.log(`🧹 Sesión limpiada para ${userId}`)
   }
 
   async handleMessage(userId: string, message: string): Promise<string> {
-    const session = await this.getSession(userId)
-    console.log(`📊 Sesión para ${userId}:`, {
-      state: session.state,
-      cartLength: session.cart.length,
-      address: session.address,
-      customerName: session.customerName
-    })
-    
+    const session = this.getSession(userId)
     const lowerMsg = message.toLowerCase().trim()
 
-    // Comandos especiales
     if (lowerMsg === '/start') {
-      await this.clearSession(userId)
       return this.getWelcomeMessage(userId)
     }
 
     if (lowerMsg === '/cancel') {
-      await this.clearSession(userId)
+      this.clearSession(userId)
       return '🔄 Pedido cancelado. Puedes comenzar de nuevo cuando quieras.'
     }
 
@@ -74,23 +72,18 @@ export class ChatbotService {
       return await this.getStatusMessage(userId)
     }
 
-    // Manejar estados
     switch (session.state) {
-      case 'awaiting_confirmation':
-        console.log('🔍 Estado: awaiting_confirmation')
-        return await this.handleConfirmationState(userId, message)
-      
-      case 'awaiting_address':
-        console.log('🔍 Estado: awaiting_address')
-        return await this.handleAddressState(userId, message)
+      case 'idle':
+        return await this.handleIdleState(userId, message)
       
       case 'awaiting_order':
-        console.log('🔍 Estado: awaiting_order')
         return await this.handleOrderState(userId, message)
       
-      case 'idle':
-        console.log('🔍 Estado: idle')
-        return await this.handleIdleState(userId, message)
+      case 'awaiting_address':
+        return await this.handleAddressState(userId, message)
+      
+      case 'awaiting_confirmation':
+        return await this.handleConfirmationState(userId, message)
       
       default:
         return 'No entiendo ese comando. Escribe /help para ver las opciones disponibles.'
@@ -99,12 +92,10 @@ export class ChatbotService {
 
   private async handleIdleState(userId: string, message: string): Promise<string> {
     try {
-      console.log(`🔄 Procesando mensaje en idle: "${message}"`)
       const interpreted = await this.gemini.interpretMessage(message)
-      console.log(`📦 Productos identificados: ${JSON.stringify(interpreted.products)}`)
       
       if (interpreted.products && interpreted.products.length > 0) {
-        const session = await this.getSession(userId)
+        const session = this.getSession(userId)
         session.cart = interpreted.products.map((p: any) => ({
           id: p.id,
           quantity: p.quantity || 1,
@@ -112,7 +103,7 @@ export class ChatbotService {
         }))
         session.customerName = interpreted.customerName || 'Cliente'
         session.state = 'awaiting_address'
-        await this.updateSession(userId, session)
+        this.updateSession(userId, session)
         
         const productList = interpreted.products
           .map((p: any, i: number) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
@@ -122,15 +113,13 @@ export class ChatbotService {
       }
       
       return 'No pude identificar productos en tu mensaje. Por favor, intenta con un formato como:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /help para más ayuda.'
-    } catch (error) {
-      console.error('❌ Error en handleIdleState:', error)
+    } catch {
       return 'Ocurrió un error procesando tu mensaje. Por favor, intenta de nuevo.'
     }
   }
 
   private async handleOrderState(userId: string, message: string): Promise<string> {
-    const session = await this.getSession(userId)
-    console.log(`🔄 Procesando mensaje en order: "${message}"`)
+    const session = this.getSession(userId)
     
     try {
       const interpreted = await this.gemini.interpretMessage(message)
@@ -143,7 +132,7 @@ export class ChatbotService {
         }))
         session.customerName = interpreted.customerName || session.customerName || 'Cliente'
         session.state = 'awaiting_address'
-        await this.updateSession(userId, session)
+        this.updateSession(userId, session)
         
         const productList = interpreted.products
           .map((p: any, i: number) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
@@ -159,12 +148,10 @@ export class ChatbotService {
   }
 
   private async handleAddressState(userId: string, message: string): Promise<string> {
-    const session = await this.getSession(userId)
-    console.log(`📝 Guardando dirección: "${message}"`)
-    
+    const session = this.getSession(userId)
     session.address = message
     session.state = 'awaiting_confirmation'
-    await this.updateSession(userId, session)
+    this.updateSession(userId, session)
     
     const productList = session.cart
       .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
@@ -175,19 +162,14 @@ export class ChatbotService {
 
   private async handleConfirmationState(userId: string, message: string): Promise<string> {
     const lowerMsg = message.toLowerCase().trim()
-    const session = await this.getSession(userId)
-    
-    console.log(`📝 Confirmación recibida: "${message}"`)
-    console.log(`📊 Estado actual: ${session.state}`)
-    console.log(`🛒 Carrito: ${JSON.stringify(session.cart)}`)
+    const session = this.getSession(userId)
     
     if (lowerMsg === 'si' || lowerMsg === 'sí' || lowerMsg === 'confirmar') {
-      console.log('✅ Confirmando pedido...')
       return await this.confirmOrder(userId)
     }
     
     if (lowerMsg === 'no' || lowerMsg === 'cancelar') {
-      await this.clearSession(userId)
+      this.clearSession(userId)
       return '❌ Pedido cancelado. Puedes comenzar de nuevo cuando quieras.'
     }
     
@@ -195,12 +177,10 @@ export class ChatbotService {
   }
 
   private async confirmOrder(userId: string): Promise<string> {
-    const session = await this.getSession(userId)
-    console.log(`📦 Confirmando pedido para ${userId}`)
-    console.log(`🛒 Productos: ${JSON.stringify(session.cart)}`)
+    const session = this.getSession(userId)
     
     if (session.cart.length === 0) {
-      await this.clearSession(userId)
+      this.clearSession(userId)
       return '❌ No hay productos en tu pedido. Comienza de nuevo.'
     }
     
@@ -210,24 +190,21 @@ export class ChatbotService {
         userId
       )
       
-      console.log(`📊 Resultado: ${JSON.stringify(result)}`)
-      
       if (result.success) {
         const orderId = result.orderId
         const productList = session.cart
           .map((item: CartItem, i: number) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
           .join('\n')
         
-        await this.clearSession(userId)
+        this.clearSession(userId)
         
         return `✅ ¡Pedido #${orderId} confirmado!\n\n📦 Productos:\n${productList}\n\n📍 Dirección: ${session.address}\n\n📊 Total: $${result.total?.toFixed(2) || '0.00'}\n\nUn agente revisará tu pedido y te notificará cuando sea aprobado.`
       }
       
-      await this.clearSession(userId)
+      this.clearSession(userId)
       return '❌ Ocurrió un error al procesar tu pedido. Por favor, intenta de nuevo más tarde.'
-    } catch (error) {
-      console.error('❌ Error confirmando pedido:', error)
-      await this.clearSession(userId)
+    } catch {
+      this.clearSession(userId)
       return '❌ Ocurrió un error al procesar tu pedido. Por favor, intenta de nuevo más tarde.'
     }
   }

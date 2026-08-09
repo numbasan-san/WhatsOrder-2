@@ -7,56 +7,90 @@ const telegram = new TelegramAdapter()
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    console.log('📨 Webhook recibido')
-    console.log('📨 Body completo:', JSON.stringify(body, null, 2))
     
+    // Procesar mensaje de texto
     if (body.message && body.message.text) {
       const chatId = body.message.chat.id.toString()
       const text = body.message.text
       
-      console.log(`📩 Mensaje de ${chatId}: "${text}"`)
-      console.log(`🔄 Llamando a chatbotService.handleMessage...`)
+      console.log(`📩 Mensaje de ${chatId}: ${text}`)
       
-      try {
-        const response = await chatbotService.handleMessage(chatId, text)
-        console.log(`📤 Respuesta del chatbot: "${response}"`)
-        
-        if (response && response.length > 0) {
-          console.log(`📤 Enviando respuesta a ${chatId}...`)
-          const sent = await telegram.sendSimpleMessage(chatId, response)
-          console.log(`✅ Mensaje enviado: ${sent}`)
-        } else {
-          console.error('❌ Respuesta vacía del chatbot')
-        }
-      } catch (error) {
-        console.error('❌ Error en chatbotService:', error)
-        await telegram.sendSimpleMessage(chatId, '⚠️ Ocurrió un error procesando tu mensaje.')
-      }
+      // Procesar con el chatbot
+      const response = await chatbotService.handleMessage(chatId, text)
+      
+      // Enviar respuesta
+      await telegram.sendSimpleMessage(chatId, response)
       
       return NextResponse.json({ status: 'ok' })
     }
     
+    // Procesar callback de botones
     if (body.callback_query) {
-      console.log('🔄 Callback recibido:', body.callback_query.data)
-      const chatId = body.callback_query.message.chat.id.toString()
-      const data = body.callback_query.data
+      const callback = body.callback_query
+      const chatId = callback.message.chat.id.toString()
+      const data = callback.data
       
-      await telegram.sendSimpleMessage(chatId, `✅ Recibido: ${data}`)
+      await handleCallback(data, chatId, callback.id)
       
       return NextResponse.json({ status: 'ok' })
     }
     
-    console.log('⚠️ Mensaje sin texto o sin estructura esperada')
     return NextResponse.json({ status: 'no_action' })
   } catch (error) {
-    console.error('❌ Webhook error:', error)
+    console.error('Webhook error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 200 }
+      { status: 500 }
     )
   }
 }
 
 export async function GET() {
   return NextResponse.json({ status: 'webhook_active' })
+}
+
+async function handleCallback(callbackData: string, chatId: string, callbackId: string) {
+  const parts = callbackData.split('_')
+  const action = parts[0]
+  const orderId = parts[1]
+
+  if (action === 'confirm' && orderId) {
+    // El botón de confirmación ahora se maneja via mensaje
+    await telegram.sendSimpleMessage(
+      chatId,
+      '✅ Pedido confirmado. Un agente lo revisará pronto.'
+    )
+    await answerCallback(callbackId, 'Pedido confirmado')
+    return
+  }
+
+  if (action === 'cancel' && orderId) {
+    await telegram.sendSimpleMessage(
+      chatId,
+      '❌ Pedido cancelado.'
+    )
+    await answerCallback(callbackId, 'Pedido cancelado')
+    return
+  }
+
+  await answerCallback(callbackId, 'Opción no disponible')
+}
+
+async function answerCallback(callbackId: string, text: string) {
+  try {
+    await fetch(
+      `${process.env.TELEGRAM_BOT_API_URL}/answerCallbackQuery`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: callbackId,
+          text: text,
+          show_alert: false
+        })
+      }
+    )
+  } catch (error) {
+    console.error('Error answering callback:', error)
+  }
 }

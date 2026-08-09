@@ -11,7 +11,7 @@ export class TelegramAdapter implements ExternalServiceAdapter {
 
   async send(data: PedidoData): Promise<PedidoResponse> {
     try {
-      const chatId = data.customerPhone 
+      const chatId = this.formatPhoneToTelegramId(data.customerPhone)
       
       const response = await fetch(
         `${this.apiUrl}/sendMessage`,
@@ -51,7 +51,6 @@ export class TelegramAdapter implements ExternalServiceAdapter {
 
       if (!response.ok) {
         const error = await response.text()
-        console.error('❌ Telegram send error:', error)
         return { 
           success: false, 
           error: `Telegram API Error: ${error}` 
@@ -66,7 +65,6 @@ export class TelegramAdapter implements ExternalServiceAdapter {
         message: 'Pedido enviado por Telegram'
       }
     } catch (error) {
-      console.error('❌ send error:', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Error desconocido'
@@ -154,11 +152,6 @@ ${data.notes ? `📝 <b>Notas:</b>\n${data.notes}` : ''}
 
   async sendSimpleMessage(chatId: string, text: string): Promise<boolean> {
     try {
-      console.log(`📤 sendSimpleMessage - chatId: ${chatId}`)
-      console.log(`📤 sendSimpleMessage - text: ${text.substring(0, 30)}...`)
-      console.log(`📤 sendSimpleMessage - token: ${this.botToken.substring(0, 10)}...`)
-      console.log(`📤 sendSimpleMessage - apiUrl: ${this.apiUrl}`)
-      
       const response = await fetch(
         `${this.apiUrl}/sendMessage`,
         {
@@ -173,13 +166,9 @@ ${data.notes ? `📝 <b>Notas:</b>\n${data.notes}` : ''}
           })
         }
       )
-      
-      const result = await response.text()
-      console.log(`📥 Telegram response: ${result}`)
-      
+
       return response.ok
-    } catch (error) {
-      console.error('❌ sendSimpleMessage error:', error)
+    } catch {
       return false
     }
   }
