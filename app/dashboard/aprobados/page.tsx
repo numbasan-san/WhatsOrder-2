@@ -11,7 +11,7 @@ import EmptyState from '@/components/dashboard/EmptyState';
 
 function AprobadosContent() {
   const { pedidos } = usePedidos();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const aprobados = useMemo(
     () => [...pedidos.filter((p) => p.status === 'approved')].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),

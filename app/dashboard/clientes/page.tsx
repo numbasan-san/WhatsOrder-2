@@ -1,72 +1,72 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Users, MousePointerClick, Phone, IdCard } from 'lucide-react';
+import { Users, MousePointerClick, Phone, IdCard, Mail } from 'lucide-react';
 import { usePedidos } from '@/context/PedidosContext';
 import { PedidosProvider } from '@/context/PedidosContext';
 import PageHeader from '@/components/dashboard/PageHeader';
 import EmptyState from '@/components/dashboard/EmptyState';
 import StatusBadge from '@/components/dashboard/StatusBadge';
 import { formatCurrency, formatDateTime } from '@/lib/utils/format';
-import { seededInt, seededPick } from '@/lib/utils/seededRandom';
-import { CATALOGO, PRECIOS } from '@/lib/utils/constants';
+import type { Pedido } from '@/lib/types';
 
-const STATUS_POOL = ['pending', 'approved', 'approved', 'approved', 'rejected'];
-
-function buildHistorial(cliente: string, pedidosReales: any[]) {
-  const extra = seededInt(`${cliente}-extra`, 2, 6);
-  const historial = [...pedidosReales];
-
-  for (let i = 0; i < extra; i++) {
-    const seed = `${cliente}-hist-${i}`;
-    const numProductos = seededInt(`${seed}-n`, 1, 3);
-    const items: any[] = [];
-    const usados = new Set();
-    for (let j = 0; j < numProductos; j++) {
-      const producto = seededPick(`${seed}-p${j}`, CATALOGO).nombre;
-      if (usados.has(producto)) continue;
-      usados.add(producto);
-      const cantidad = seededInt(`${seed}-q${j}`, 1, 4);
-      items.push({ product: producto, quantity: cantidad, subtotal: PRECIOS[producto] * cantidad });
-    }
-    const total = items.reduce((sum, it) => sum + it.subtotal, 0);
-    const diasAtras = seededInt(`${seed}-d`, 1, 45);
-    historial.push({
-      id: `h-${seed}`,
-      status: seededPick(`${seed}-s`, STATUS_POOL),
-      total,
-      items,
-      created_at: new Date(Date.now() - diasAtras * 86400000).toISOString(),
-    });
-  }
-
-  return historial.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+interface Customer {
+  key: string;
+  name: string;
+  phone: string | null;
+  telegramChatId: string | null;
+  email: string | null;
+  cedula: string | null;
+  orders: Pedido[];
+  orderCount: number;
+  totalSpent: number;
+  lastOrderAt: string;
 }
 
 function ClientesContent() {
   const { pedidos } = usePedidos();
-  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  const customers = useMemo(() => {
-    const map: Record<string, any> = {};
+  const customers = useMemo<Customer[]>(() => {
+    const map: Record<string, Customer> = {};
+
     pedidos.forEach((p) => {
-      const key = p.customer.name;
+      const key = p.customer_phone || p.telegram_chat_id || p.id;
       if (!map[key]) {
-        map[key] = { name: p.customer.name, phone: p.customer.phone, cedula: p.customer.cedula, orders: [] };
+        map[key] = {
+          key,
+          name: p.customer_name || 'Cliente sin nombre',
+          phone: p.customer_phone,
+          telegramChatId: p.telegram_chat_id,
+          email: p.customer_email,
+          cedula: p.customer_cedula,
+          orders: [],
+          orderCount: 0,
+          totalSpent: 0,
+          lastOrderAt: p.created_at,
+        };
       }
-      map[key].orders.push(p);
+      const c = map[key];
+      c.orders.push(p);
+      c.orderCount += 1;
+      if (p.status === 'approved') c.totalSpent += p.total || 0;
+      if (new Date(p.created_at).getTime() > new Date(c.lastOrderAt).getTime()) {
+        c.lastOrderAt = p.created_at;
+        // Prefer the most recent non-null contact info for display.
+        if (p.customer_name) c.name = p.customer_name;
+        if (p.customer_email) c.email = p.customer_email;
+        if (p.customer_cedula) c.cedula = p.customer_cedula;
+      }
     });
 
-    return Object.values(map)
-      .map((c) => {
-        const orders = buildHistorial(c.name, c.orders);
-        const totalSpent = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-        return { ...c, orders, totalOrders: orders.length, totalSpent };
-      })
-      .sort((a, b) => b.totalSpent - a.totalSpent);
+    Object.values(map).forEach((c) => {
+      c.orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    });
+
+    return Object.values(map).sort((a, b) => b.totalSpent - a.totalSpent);
   }, [pedidos]);
 
-  const selected = customers.find((c) => c.name === selectedName);
+  const selected = customers.find((c) => c.key === selectedKey);
 
   return (
     <div className="mx-auto max-w-[1400px]">
@@ -79,11 +79,11 @@ function ClientesContent() {
           ) : (
             customers.map((c) => (
               <button
-                key={c.name}
+                key={c.key}
                 type="button"
-                onClick={() => setSelectedName(c.name)}
+                onClick={() => setSelectedKey(c.key)}
                 className={`w-full rounded-xl border px-3.5 py-3 text-left shadow-sm transition ${
-                  selectedName === c.name
+                  selectedKey === c.key
                     ? 'border-brand-500/40 bg-brand-50/70 ring-1 ring-brand-500/30'
                     : 'border-transparent bg-white hover:border-slate-200 hover:bg-slate-50'
                 }`}
@@ -91,11 +91,11 @@ function ClientesContent() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-slate-900">{c.name}</p>
-                    <p className="truncate text-xs text-slate-400">{c.phone}</p>
+                    <p className="truncate text-xs text-slate-400">{c.phone || '—'}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-bold text-brand-800">{formatCurrency(c.totalSpent)}</p>
-                    <p className="text-[11px] text-slate-400">{c.totalOrders} pedidos</p>
+                    <p className="text-[11px] text-slate-400">{c.orderCount} pedidos</p>
                   </div>
                 </div>
               </button>
@@ -111,8 +111,13 @@ function ClientesContent() {
                   <h2 className="text-lg font-bold text-slate-900">{selected.name}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                     <span className="flex items-center gap-1">
-                      <Phone className="h-3 w-3" /> {selected.phone}
+                      <Phone className="h-3 w-3" /> {selected.phone || '—'}
                     </span>
+                    {selected.email && (
+                      <span className="flex items-center gap-1">
+                        <Mail className="h-3 w-3" /> {selected.email}
+                      </span>
+                    )}
                     {selected.cedula && (
                       <span className="flex items-center gap-1">
                         <IdCard className="h-3 w-3" /> {selected.cedula}
@@ -125,28 +130,24 @@ function ClientesContent() {
               <div className="grid grid-cols-3 gap-3 py-5">
                 <div className="rounded-xl bg-slate-50 p-3.5 text-center">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Total Pedidos</p>
-                  <p className="mt-1 text-xl font-bold text-slate-900">{selected.totalOrders}</p>
+                  <p className="mt-1 text-xl font-bold text-slate-900">{selected.orderCount}</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3.5 text-center">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Gasto Total</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Gasto Total (aprobados)</p>
                   <p className="mt-1 text-xl font-bold text-slate-900">{formatCurrency(selected.totalSpent)}</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3.5 text-center">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Ticket Promedio</p>
-                  <p className="mt-1 text-xl font-bold text-slate-900">
-                    {formatCurrency(selected.totalSpent / selected.totalOrders)}
-                  </p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Último Pedido</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{formatDateTime(selected.lastOrderAt)}</p>
                 </div>
               </div>
 
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Historial de Pedidos</h3>
               <div className="max-h-[420px] space-y-2 overflow-y-auto scroll-thin pr-1">
-                {selected.orders.map((o: any, idx: number) => (
-                  <div key={o.id ?? idx} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 px-3.5 py-2.5">
+                {selected.orders.map((o) => (
+                  <div key={o.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 px-3.5 py-2.5">
                     <div className="min-w-0">
-                      <p className="truncate text-sm text-slate-600">
-                        {o.items.map((i: any) => i.product).join(', ')}
-                      </p>
+                      <p className="truncate text-sm text-slate-600">{o.items.map((i) => i.product).join(', ') || 'Sin productos'}</p>
                       <p className="text-xs text-slate-400">{formatDateTime(o.created_at)}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-3">

@@ -8,17 +8,15 @@ import PageHeader from '@/components/dashboard/PageHeader';
 import OrderListRow from '@/components/dashboard/OrderListRow';
 import DetallePedido from '@/components/dashboard/DetallePedido';
 import EmptyState from '@/components/dashboard/EmptyState';
-import { seededPick } from '@/lib/utils/seededRandom';
-import { RAZONES_RECHAZO } from '@/lib/utils/constants';
 
 function RechazadosContent() {
   const { pedidos } = usePedidos();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const rechazados = useMemo(() => {
-    return [...pedidos.filter((p) => p.status === 'rejected')]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .map((p) => ({ ...p, rejection_reason: p.rejection_reason || seededPick(`${p.id}-reason`, RAZONES_RECHAZO) }));
+    return [...pedidos.filter((p) => p.status === 'rejected')].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   }, [pedidos]);
   const selected = rechazados.find((p) => p.id === selectedId);
 
