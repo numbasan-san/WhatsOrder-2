@@ -31,6 +31,11 @@ alter table pedidos add column if not exists confirmed_at timestamptz;
 alter table pedidos add column if not exists rejected_by uuid;
 alter table pedidos add column if not exists rejected_at timestamptz;
 alter table pedidos add column if not exists rejection_reason text;
+alter table pedidos add column if not exists approved_by uuid;
+alter table pedidos add column if not exists approved_at timestamptz;
+alter table pedidos add column if not exists created_by uuid;
+alter table pedidos add column if not exists notes text;
+alter table pedidos add column if not exists delivery_address text;
 create index if not exists pedidos_status_idx on pedidos(status);
 create index if not exists pedidos_created_at_idx on pedidos(created_at desc);
 
