@@ -43,37 +43,46 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Mapear los datos de Supabase al formato esperado por el frontend
-      const mappedPedidos = data.map((p: any) => ({
-        id: p.id,
-        customer: {
-          name: p.customer_name || 'Cliente sin nombre',
-          phone: p.customer_phone || '',
-          email: null,
-          cedula: null,
-        },
-        delivery: {
-          address: p.delivery_address || 'Sin dirección',
-          city: 'Santo Domingo',
-          zone: 'Zona sin asignar',
-          instructions: p.notes || '',
-        },
-        items: p.items || [],
-        total: p.total || 0,
-        status: p.status || 'pending',
-        created_by: p.created_by || 'Sistema',
-        created_at: p.created_at || new Date().toISOString(),
-        approved_by: p.approved_by || null,
-        approved_at: p.approved_at || null,
-        rejected_by: null,
-        rejected_at: null,
-        rejection_reason: p.notes || null,
-        delivery_assigned_to: null,
-        delivery_status: null,
-        delivery_eta: null,
-        source: p.source || 'telegram',
-        notes: p.notes || null,
-      }));
+      // Mapear los datos correctamente
+      const mappedPedidos = data.map((p: any) => {
+        // Transformar items: de {id, price, quantity, subtotal} a {product, quantity, subtotal}
+        const mappedItems = (p.items || []).map((item: any) => ({
+          product: item.id || item.product || 'Producto sin nombre', // ← Cambio clave: "id" → "product"
+          quantity: item.quantity || 0,
+          subtotal: item.subtotal || item.price * item.quantity || 0,
+        }));
+
+        return {
+          id: p.id,
+          customer: {
+            name: p.customer_name || 'Cliente sin nombre',
+            phone: p.customer_phone || '',
+            email: p.customer_email || null,
+            cedula: p.customer_cedula || null,
+          },
+          delivery: {
+            address: p.delivery_address || 'Sin dirección',
+            city: p.delivery_city || 'Santo Domingo',
+            zone: p.delivery_zone || 'Zona sin asignar',
+            instructions: p.delivery_instructions || p.notes || '',
+          },
+          items: mappedItems, // ← Items transformados
+          total: p.total || 0,
+          status: p.status || 'pending',
+          created_by: p.created_by || 'Sistema',
+          created_at: p.created_at || new Date().toISOString(),
+          approved_by: p.approved_by || null,
+          approved_at: p.approved_at || null,
+          rejected_by: p.rejected_by || null,
+          rejected_at: p.rejected_at || null,
+          rejection_reason: p.rejection_reason || null,
+          delivery_assigned_to: p.delivery_assigned_to || null,
+          delivery_status: p.delivery_status || null,
+          delivery_eta: p.delivery_eta || null,
+          source: p.source || 'telegram',
+          notes: p.notes || null,
+        };
+      });
 
       console.log('✅ Pedidos mapeados:', mappedPedidos);
       setPedidos(mappedPedidos);
