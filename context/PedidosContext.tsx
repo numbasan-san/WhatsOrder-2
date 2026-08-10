@@ -87,7 +87,8 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
       }));
 
       setPedidos(mapped);
-    } catch {
+    } catch (error) {
+      console.error('Error loading pedidos:', error);
       setPedidos([]);
     } finally {
       setLoading(false);
