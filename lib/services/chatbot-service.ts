@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export interface Session {
   userId: string
-  state: 'idle' | 'awaiting_order' | 'awaiting_address' | 'awaiting_confirmation' | 'awaiting_correction' | 'awaiting_name'
+  state: 'idle' | 'awaiting_order' | 'awaiting_name' | 'awaiting_address' | 'awaiting_confirmation' | 'awaiting_correction'
   cart: CartItem[]
   customerName?: string
   address?: string
@@ -59,7 +59,6 @@ export class ChatbotService {
     const session = this.getSession(userId)
     const lowerMsg = message.toLowerCase().trim()
 
-    // Comandos especiales
     if (lowerMsg === '/start') {
       this.clearSession(userId)
       return this.getWelcomeMessage()
@@ -78,7 +77,6 @@ export class ChatbotService {
       return await this.getStatusMessage(userId)
     }
 
-    // Manejar estados
     switch (session.state) {
       case 'idle':
         return await this.handleIdleState(userId, message)
@@ -103,6 +101,52 @@ export class ChatbotService {
     }
   }
 
+  /**
+   * Valida productos contra el ERP
+   */
+  private async validateProducts(session: Session): Promise<{
+    valid: boolean
+    validatedCart: Array<{ id: string; quantity: number; price: number; stock: number }>
+    invalidItems: Array<{ id: string; reason: string }>
+    stockIssues: Array<{ id: string; requested: number; available: number }>
+  } | null> {
+    try {
+      const validation = await this.erp.validateCart(session.cart)
+      
+      if (!validation.valid) {
+        return {
+          valid: false,
+          validatedCart: [],
+          invalidItems: validation.invalid,
+          stockIssues: validation.stockIssues
+        }
+      }
+
+      const validatedCart = session.cart.map(item => {
+        const product = validation.products.find(p => 
+          p.name.toLowerCase() === item.id.toLowerCase() ||
+          p.sku.toLowerCase() === item.id.toLowerCase()
+        )
+        return {
+          id: item.id,
+          quantity: item.quantity,
+          price: product?.price || 0,
+          stock: product?.stock || 0
+        }
+      })
+
+      return {
+        valid: true,
+        validatedCart,
+        invalidItems: [],
+        stockIssues: []
+      }
+    } catch (error) {
+      console.error('Error validando productos:', error)
+      return null
+    }
+  }
+
   private async handleIdleState(userId: string, message: string): Promise<string> {
     try {
       const interpreted = await this.gemini.interpretMessage(message)
@@ -116,8 +160,42 @@ export class ChatbotService {
         }))
         session.customerName = interpreted.customerName || undefined
         session.rawMessage = message
+
+        const validation = await this.validateProducts(session)
         
-        // Si ya tiene nombre, pasar a confirmación; si no, preguntar nombre
+        if (validation === null) {
+          return 'Hubo un error al validar los productos. Por favor, intenta de nuevo.'
+        }
+
+        if (!validation.valid) {
+          let errorMessage = 'Algunos productos no estan disponibles:\n\n'
+          
+          if (validation.invalidItems.length > 0) {
+            errorMessage += 'Productos no encontrados:\n'
+            validation.invalidItems.forEach(item => {
+              errorMessage += `  • ${item.id}\n`
+            })
+            errorMessage += '\n'
+          }
+
+          if (validation.stockIssues.length > 0) {
+            errorMessage += 'Problemas de stock:\n'
+            validation.stockIssues.forEach(item => {
+              errorMessage += `  • ${item.id}: solicitaste ${item.requested}, disponible ${item.available}\n`
+            })
+            errorMessage += '\n'
+          }
+
+          errorMessage += 'Por favor, corrige tu pedido y vuelve a intentarlo.'
+          return errorMessage
+        }
+
+        session.cart = validation.validatedCart.map(item => ({
+          id: item.id,
+          quantity: item.quantity,
+          price: item.price
+        }))
+
         if (session.customerName) {
           session.state = 'awaiting_confirmation'
           this.updateSession(userId, session)
@@ -125,13 +203,14 @@ export class ChatbotService {
         } else {
           session.state = 'awaiting_name'
           this.updateSession(userId, session)
-          return this.buildProductListMessage(session) + '\n\n¿Cuál es tu nombre?'
+          return this.buildProductListMessage(session) + '\n\nCual es tu nombre?'
         }
       }
       
-      return 'No pude identificar productos en tu mensaje. Por favor, intenta con un formato como:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /help para más ayuda.'
-    } catch {
-      return 'Ocurrió un error procesando tu mensaje. Por favor, intenta de nuevo.'
+      return 'No pude identificar productos en tu mensaje. Por favor, intenta con un formato como:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /help para mas ayuda.'
+    } catch (error) {
+      console.error('Error en handleIdleState:', error)
+      return 'Ocurrio un error procesando tu mensaje. Por favor, intenta de nuevo.'
     }
   }
 
@@ -144,7 +223,7 @@ export class ChatbotService {
     const name = message.trim()
     
     if (name.length < 2) {
-      return 'Por favor, ingresa un nombre válido (mínimo 2 caracteres).'
+      return 'Por favor, ingresa un nombre valido (minimo 2 caracteres).'
     }
     
     session.customerName = name
@@ -168,17 +247,15 @@ export class ChatbotService {
     const session = this.getSession(userId)
     
     if (lowerMsg === 'si' || lowerMsg === 'sí' || lowerMsg === 'confirmar') {
-      // Verificar si tiene nombre
       if (!session.customerName) {
         session.state = 'awaiting_name'
         this.updateSession(userId, session)
         return 'Por favor, ingresa tu nombre para continuar.'
       }
-      // Verificar si tiene dirección
       if (!session.address) {
         session.state = 'awaiting_address'
         this.updateSession(userId, session)
-        return 'Por favor, ingresa tu dirección de entrega para continuar.'
+        return 'Por favor, ingresa tu direccion de entrega para continuar.'
       }
       return await this.confirmOrder(userId)
     }
@@ -186,7 +263,7 @@ export class ChatbotService {
     if (lowerMsg === 'no' || lowerMsg === 'corregir' || lowerMsg === 'modificar') {
       session.state = 'awaiting_correction'
       this.updateSession(userId, session)
-      return 'Envía el pedido corregido con el formato:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /cancel para cancelar.'
+      return 'Envia el pedido corregido con el formato:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /cancel para cancelar.'
     }
     
     if (lowerMsg === 'cancelar' || lowerMsg === 'cancel') {
@@ -194,7 +271,7 @@ export class ChatbotService {
       return 'Pedido cancelado. Puedes comenzar de nuevo con /start'
     }
     
-    return 'No entendí tu respuesta. Responde "Sí" para confirmar, "No" para corregir, o "Cancelar" para cancelar.'
+    return 'No entendi tu respuesta. Responde "Si" para confirmar, "No" para corregir, o "Cancelar" para cancelar.'
   }
 
   private async handleCorrectionState(userId: string, message: string): Promise<string> {
@@ -211,19 +288,52 @@ export class ChatbotService {
         }))
         session.customerName = interpreted.customerName || session.customerName || undefined
         session.rawMessage = message
+
+        const validation = await this.validateProducts(session)
         
-        // Si no tiene nombre, pedirlo
+        if (validation === null) {
+          return 'Hubo un error al validar los productos. Por favor, intenta de nuevo.'
+        }
+
+        if (!validation.valid) {
+          let errorMessage = 'Algunos productos no estan disponibles:\n\n'
+          
+          if (validation.invalidItems.length > 0) {
+            errorMessage += 'Productos no encontrados:\n'
+            validation.invalidItems.forEach(item => {
+              errorMessage += `  • ${item.id}\n`
+            })
+            errorMessage += '\n'
+          }
+
+          if (validation.stockIssues.length > 0) {
+            errorMessage += 'Problemas de stock:\n'
+            validation.stockIssues.forEach(item => {
+              errorMessage += `  • ${item.id}: solicitaste ${item.requested}, disponible ${item.available}\n`
+            })
+            errorMessage += '\n'
+          }
+
+          errorMessage += 'Por favor, corrige tu pedido y vuelve a intentarlo.'
+          return errorMessage
+        }
+
+        session.cart = validation.validatedCart.map(item => ({
+          id: item.id,
+          quantity: item.quantity,
+          price: item.price
+        }))
+
         if (!session.customerName) {
           session.state = 'awaiting_name'
           this.updateSession(userId, session)
-          return this.buildProductListMessage(session) + '\n\n¿Cuál es tu nombre?'
+          return this.buildProductListMessage(session) + '\n\nCual es tu nombre?'
         }
         
-        // Si no tiene dirección, pedirla
         if (!session.address) {
           session.state = 'awaiting_address'
           this.updateSession(userId, session)
-          return this.buildProductListMessage(session) + '\n\nPor favor, ingresa tu dirección de entrega.'
+          return this.buildProductListMessage(session) + '\n\nPor favor, ingresa tu direccion de entrega.'
         }
         
         session.state = 'awaiting_confirmation'
@@ -232,8 +342,9 @@ export class ChatbotService {
       }
       
       return 'No pude identificar productos en tu mensaje. Intenta con un formato como:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /cancel para cancelar.'
-    } catch {
-      return 'Ocurrió un error. Por favor, intenta de nuevo o escribe /cancel para reiniciar.'
+    } catch (error) {
+      console.error('Error en handleCorrectionState:', error)
+      return 'Ocurrio un error. Por favor, intenta de nuevo o escribe /cancel para reiniciar.'
     }
   }
 
@@ -250,7 +361,7 @@ export class ChatbotService {
       .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
       .join('\n')
     
-    return `Resumen del pedido:\n\n${productList}\n\n👤 Cliente: ${session.customerName || 'No especificado'}\n📍 Dirección: ${session.address || 'No especificada'}\n\n¿Deseas confirmar el pedido?\n\nResponde "Sí" para confirmar, "No" para corregir, o "Cancelar" para cancelar.`
+    return `Resumen del pedido:\n\n${productList}\n\nCliente: ${session.customerName || 'No especificado'}\nDireccion: ${session.address || 'No especificada'}\n\nDeseas confirmar el pedido?\n\nResponde "Si" para confirmar, "No" para corregir, o "Cancelar" para cancelar.`
   }
 
   private async confirmOrder(userId: string): Promise<string> {
@@ -262,31 +373,21 @@ export class ChatbotService {
     }
     
     try {
-      // Obtener precios del ERP
-      const productDetails = await Promise.all(
-        session.cart.map(async (item) => {
-          const price = await this.erp.getPrice(item.id, userId)
-          const stock = await this.erp.queryStock(item.id)
-          return { ...item, price, stock }
-        })
-      )
-
-      const total = productDetails.reduce(
-        (sum, p) => sum + (p.price * p.quantity),
+      const total = session.cart.reduce(
+        (sum, p) => sum + (p.price || 0) * p.quantity,
         0
       )
 
-      // Crear el pedido en la base de datos
       const supabase = await createClient()
       
       const insertData = {
         customer_phone: userId,
         customer_name: session.customerName || null,
-        items: productDetails.map(p => ({
+        items: session.cart.map(p => ({
           id: p.id,
           quantity: p.quantity,
-          price: p.price,
-          subtotal: p.price * p.quantity
+          price: p.price || 0,
+          subtotal: (p.price || 0) * p.quantity
         })),
         total: total,
         status: 'pending',
@@ -309,16 +410,16 @@ export class ChatbotService {
       }
 
       const productList = session.cart
-        .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
+        .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es) - $${(item.price || 0).toFixed(2)} c/u`)
         .join('\n')
       
       this.clearSession(userId)
       
-      return `¡Pedido #${order.id.slice(0, 8)} confirmado!\n\nProductos:\n${productList}\n\n👤 Cliente: ${session.customerName || 'No especificado'}\n📍 Dirección: ${session.address || 'No especificada'}\n\n💰 Total: $${total.toFixed(2)}\n\nUn agente revisará tu pedido y te notificará cuando sea aprobado.\n\nGracias por tu compra!`
+      return `Pedido #${order.id.slice(0, 8)} confirmado!\n\nProductos:\n${productList}\n\nCliente: ${session.customerName || 'No especificado'}\nDireccion: ${session.address || 'No especificada'}\n\nTotal: $${total.toFixed(2)}\n\nUn agente revisara tu pedido y te notificara cuando sea aprobado.\n\nGracias por tu compra!`
     } catch (error) {
       console.error('Error confirming order:', error)
       this.clearSession(userId)
-      return 'Ocurrió un error al procesar tu pedido. Por favor, intenta de nuevo más tarde.'
+      return 'Ocurrio un error al procesar tu pedido. Por favor, intenta de nuevo mas tarde.'
     }
   }
 
@@ -338,7 +439,7 @@ export class ChatbotService {
         return 'No tienes pedidos registrados.'
       }
       
-      let message = 'Tus últimos pedidos:\n\n'
+      let message = 'Tus ultimos pedidos:\n\n'
       
       data.forEach((order: any) => {
         const statusMap: Record<string, string> = {
@@ -350,7 +451,7 @@ export class ChatbotService {
         const date = new Date(order.created_at).toLocaleDateString('es-DO')
         const customerName = order.customer_name || 'Cliente'
         message += `#${order.id.slice(0, 8)} — ${statusMap[order.status] || order.status}\n`
-        message += `👤 ${customerName} — $${order.total?.toFixed(2) || '0.00'} — ${date}\n\n`
+        message += `Cliente: ${customerName} — $${order.total?.toFixed(2) || '0.00'} — ${date}\n\n`
       })
       
       return message
@@ -360,11 +461,11 @@ export class ChatbotService {
   }
 
   private getWelcomeMessage(): string {
-    return `¡Bienvenido a WhatsOrder!\n\nPuedes hacer tu pedido de forma natural:\n\n"Quiero 2 litros de leche, 1 pan y 3 manzanas"\n\nTe preguntaré tu nombre, dirección y confirmación antes de procesarlo.\n\nComandos disponibles:\n/help - Ver ayuda\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso`
+    return `Bienvenido a WhatsOrder!\n\nPuedes hacer tu pedido de forma natural:\n\n"Quiero 2 litros de leche, 1 pan y 3 manzanas"\n\nTe preguntare tu nombre, direccion y confirmacion antes de procesarlo.\n\nComandos disponibles:\n/help - Ver ayuda\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso`
   }
 
   private getHelpMessage(): string {
-    return `Ayuda de WhatsOrder:\n\nPara hacer un pedido, escribe los productos que deseas:\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nTe preguntaré:\n1. Tu nombre\n2. Dirección de entrega\n3. Confirmación del pedido\n\nComandos:\n/start - Iniciar el bot\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso\n/help - Ver esta ayuda`
+    return `Ayuda de WhatsOrder:\n\nPara hacer un pedido, escribe los productos que deseas:\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nTe preguntare:\n1. Tu nombre\n2. Direccion de entrega\n3. Confirmacion del pedido\n\nComandos:\n/start - Iniciar el bot\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso\n/help - Ver esta ayuda`
   }
 }
 
