@@ -1,6 +1,7 @@
 'use client';
 
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { AuthProvider } from '@/context/AuthContext';
 import './globals.css';
 
 export default function RootLayout({
@@ -12,7 +13,9 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <body className="bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 vc-init">
         <ThemeProvider>
-          {children}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

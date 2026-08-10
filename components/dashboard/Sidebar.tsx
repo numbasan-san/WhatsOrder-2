@@ -12,9 +12,11 @@ import {
   ShieldCheck,
   MessageCircle,
   ChevronLeft,
+  LogOut,
 } from 'lucide-react';
 import ThemeToggle from '../ThemeToggle';
 import { useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 
 const NAV_ITEMS_DASHBOARD = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -39,9 +41,14 @@ interface SidebarProps {
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const { user, profile, signOut } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
   const toggleCollapse = () => setCollapsed(!collapsed);
+
+  const handleLogout = async () => {
+    await signOut();
+  };
 
   const renderNavItems = (items: typeof NAV_ITEMS_DASHBOARD) => {
     return items.map((item) => {
@@ -73,6 +80,22 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       );
     });
   };
+
+  // Obtener iniciales del usuario
+  const userInitials = profile?.full_name
+    ? profile.full_name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : user?.email?.charAt(0).toUpperCase() || 'U';
+
+  const userDisplayName = profile?.full_name || user?.email?.split('@')[0] || 'Usuario';
+  
+  const userRole = profile?.role === 'admin' ? 'Administrador' : 
+                   profile?.role === 'supervisor' ? 'Supervisor' : 
+                   'CSR';
 
   return (
     <>
@@ -144,18 +167,36 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             }`}
           >
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500/20 text-sm font-semibold text-brand-400">
-              CA
+              {userInitials}
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-100">CSR Admin</p>
-                <p className="truncate text-xs text-slate-500">Supervisor</p>
+                <p className="truncate text-sm font-medium text-slate-100">{userDisplayName}</p>
+                <p className="truncate text-xs text-slate-500">{userRole}</p>
               </div>
             )}
-            {!collapsed && <ThemeToggle />}
-            {collapsed && (
-              <div className="flex flex-col items-center gap-1">
+            {!collapsed && (
+              <div className="flex items-center gap-1">
                 <ThemeToggle />
+                <button
+                  onClick={handleLogout}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
+                  aria-label="Cerrar sesión"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            {collapsed && (
+              <div className="flex flex-col items-center gap-2">
+                <ThemeToggle />
+                <button
+                  onClick={handleLogout}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
+                  aria-label="Cerrar sesión"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
               </div>
             )}
           </div>

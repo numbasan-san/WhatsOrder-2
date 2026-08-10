@@ -52,3 +52,18 @@ export interface Pedido {
   source?: string;
   notes?: string | null;
 }
+
+export interface UserProfile {
+  id: string;
+  full_name: string;
+  role: 'admin' | 'supervisor' | 'csr';
+  department: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  profile?: UserProfile;
+}

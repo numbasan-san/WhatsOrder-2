@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 import { PedidosProvider } from '@/context/PedidosContext';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import Sidebar from '@/components/dashboard/Sidebar';
@@ -10,7 +13,30 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const { user, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Proteger la ruta
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  // Mostrar loading mientras verifica autenticación
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="text-slate-500 dark:text-slate-400">Cargando...</div>
+      </div>
+    );
+  }
+
+  // Si no hay usuario, no renderizar (redirige)
+  if (!user) {
+    return null;
+  }
 
   return (
     <ThemeProvider>
@@ -41,4 +67,4 @@ export default function DashboardLayout({
       </PedidosProvider>
     </ThemeProvider>
   );
-}
+} 
