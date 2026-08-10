@@ -40,9 +40,6 @@ export class ERPAdapter implements ExternalServiceAdapter {
     }
   }
 
-  /**
-   * Normaliza un string para búsqueda (quita acentos, espacios, etc.)
-   */
   private normalize(str: string): string {
     return str
       .toLowerCase()
@@ -52,18 +49,12 @@ export class ERPAdapter implements ExternalServiceAdapter {
       .trim()
   }
 
-  /**
-   * Tokeniza un string en palabras clave
-   */
   private tokenize(str: string): string[] {
     return this.normalize(str)
       .split(' ')
       .filter(word => word.length > 1)
   }
 
-  /**
-   * Calcula el score de coincidencia entre dos strings
-   */
   private matchScore(query: string, target: string): number {
     const qTokens = this.tokenize(query)
     const tTokens = this.tokenize(target)
@@ -85,37 +76,25 @@ export class ERPAdapter implements ExternalServiceAdapter {
 
   /**
    * Busca un producto por nombre o SKU con matching difuso
+   * Retorna el producto completo incluyendo su nombre real
    */
   async findProduct(query: string): Promise<Product | null> {
     const products = await this.getProducts()
-    
-    // Si la query es un UUID, intentar buscar por ID exacto
-    if (query.includes('-') && query.length > 30) {
-      const exactId = products.find(p => p.id === query)
-      if (exactId) return exactId
-    }
-    
     const normalizedQuery = this.normalize(query)
 
     if (!normalizedQuery || normalizedQuery.length < 2) {
       return null
     }
 
-    // Primero buscar coincidencia exacta con el nombre original (sin normalizar)
+    // 1. Buscar coincidencia exacta
     let found = products.find(p => 
-      p.name.toLowerCase() === query.toLowerCase() ||
-      p.name.toLowerCase() === normalizedQuery
+      this.normalize(p.name) === normalizedQuery ||
+      this.normalize(p.sku) === normalizedQuery
     )
+
     if (found) return found
 
-    // Buscar por SKU
-    found = products.find(p => 
-      p.sku.toLowerCase() === query.toLowerCase() ||
-      p.sku.toLowerCase() === normalizedQuery
-    )
-    if (found) return found
-
-    // Buscar coincidencia parcial con score
+    // 2. Buscar coincidencia parcial con score
     const scored = products.map(p => ({
       product: p,
       score: this.matchScore(normalizedQuery, p.name)
@@ -125,32 +104,42 @@ export class ERPAdapter implements ExternalServiceAdapter {
       .filter(s => s.score > 0)
       .sort((a, b) => b.score - a.score)
 
-    if (best.length > 0 && best[0].score >= 1) {
+    if (best.length > 0 && best[0].score >= 2) {
       return best[0].product
+    }
+
+    // 3. Buscar por SKU
+    const skuFound = products.find(p => 
+      this.normalize(p.sku) === normalizedQuery
+    )
+
+    if (skuFound) return skuFound
+
+    // 4. Buscar por token individual
+    const tokens = this.tokenize(normalizedQuery)
+    for (const token of tokens) {
+      if (token.length < 3) continue
+      const tokenFound = products.find(p => 
+        this.normalize(p.name).includes(token) ||
+        this.normalize(p.sku).includes(token)
+      )
+      if (tokenFound) return tokenFound
+    }
+
+    // 5. Buscar por palabras clave
+    const words = normalizedQuery.split(' ')
+    for (const word of words) {
+      if (word.length < 3) continue
+      const wordFound = products.find(p => 
+        this.normalize(p.name).includes(word) ||
+        this.normalize(p.sku).includes(word)
+      )
+      if (wordFound) return wordFound
     }
 
     return null
   }
 
-  /**
-   * Busca múltiples productos por nombre
-   */
-  async findProducts(queries: string[]): Promise<Map<string, Product>> {
-    const result = new Map<string, Product>()
-
-    for (const query of queries) {
-      const product = await this.findProduct(query)
-      if (product) {
-        result.set(query, product)
-      }
-    }
-
-    return result
-  }
-
-  /**
-   * Obtiene sugerencias de productos similares
-   */
   private getSuggestions(query: string, products: Product[]): string[] {
     const normalizedQuery = this.normalize(query)
     const scored = products.map(p => ({
@@ -166,18 +155,18 @@ export class ERPAdapter implements ExternalServiceAdapter {
   }
 
   /**
-   * Valida un carrito contra el stock del ERP
+   * Valida un carrito y retorna los productos con sus nombres reales
    */
   async validateCart(cart: Array<{ id: string; quantity: number }>): Promise<{
     valid: boolean
     products: Product[]
     invalidItems: Array<{ id: string; reason: string; suggestions?: string[] }>
-    stockIssues: Array<{ id: string; requested: number; available: number }>
+    stockIssues: Array<{ id: string; requested: number; available: number; name: string }>
   }> {
     const allProducts = await this.getProducts()
     const valid: Product[] = []
     const invalidItems: Array<{ id: string; reason: string; suggestions?: string[] }> = []
-    const stockIssues: Array<{ id: string; requested: number; available: number }> = []
+    const stockIssues: Array<{ id: string; requested: number; available: number; name: string }> = []
 
     for (const item of cart) {
       const product = await this.findProduct(item.id)
@@ -204,7 +193,8 @@ export class ERPAdapter implements ExternalServiceAdapter {
         stockIssues.push({
           id: item.id,
           requested: item.quantity,
-          available: product.stock
+          available: product.stock,
+          name: product.name
         })
         continue
       }
@@ -220,9 +210,6 @@ export class ERPAdapter implements ExternalServiceAdapter {
     }
   }
 
-  /**
-   * Obtiene productos mock para desarrollo
-   */
   private getMockProducts(): Product[] {
     return [
       { id: '1', sku: 'aceite-1l', name: 'Aceite vegetal 1L', price: 180, stock: 120, active: true },

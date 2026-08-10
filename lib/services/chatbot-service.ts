@@ -14,7 +14,8 @@ export interface Session {
 }
 
 export interface CartItem {
-  id: string
+  id: string        // UUID del producto
+  name: string      // NOMBRE REAL del producto (para mostrar al usuario)
   quantity: number
   price?: number
 }
@@ -59,7 +60,6 @@ export class ChatbotService {
     const session = this.getSession(userId)
     const lowerMsg = message.toLowerCase().trim()
 
-    // Comandos especiales
     if (lowerMsg === '/start') {
       this.clearSession(userId)
       return this.getWelcomeMessage()
@@ -78,7 +78,6 @@ export class ChatbotService {
       return await this.getStatusMessage(userId)
     }
 
-    // Manejar estados
     switch (session.state) {
       case 'idle':
         return await this.handleIdleState(userId, message)
@@ -109,19 +108,19 @@ export class ChatbotService {
       
       if (interpreted.products && interpreted.products.length > 0) {
         const session = this.getSession(userId)
-        session.cart = interpreted.products.map(p => ({
+        
+        // Crear carrito temporal con los nombres que vienen de Gemini
+        const tempCart = interpreted.products.map(p => ({
           id: p.id,
+          name: p.id, // Guardamos el nombre original temporalmente
           quantity: p.quantity || 1,
           price: p.price || 0
         }))
-        session.customerName = interpreted.customerName || undefined
-        session.rawMessage = message
         
         // Validar productos contra el ERP
-        const validation = await this.erp.validateCart(session.cart.map(item => ({
-          id: item.id,
-          quantity: item.quantity
-        })))
+        const validation = await this.erp.validateCart(
+          tempCart.map(item => ({ id: item.id, quantity: item.quantity }))
+        )
 
         if (!validation.valid) {
           let errorMessage = 'Algunos productos no estan disponibles:\n\n'
@@ -141,8 +140,7 @@ export class ChatbotService {
           if (validation.stockIssues.length > 0) {
             errorMessage += 'Problemas de stock:\n'
             validation.stockIssues.forEach(item => {
-              const product = validation.products.find(p => p.id === item.id)
-              errorMessage += `  - ${product?.name || item.id}: solicitaste ${item.requested}, disponible ${item.available}\n`
+              errorMessage += `  - ${item.name}: solicitaste ${item.requested}, disponible ${item.available}\n`
             })
             errorMessage += '\n'
           }
@@ -151,16 +149,27 @@ export class ChatbotService {
           return errorMessage
         }
 
-        // Si pasa la validación, actualizar el carrito con IDs reales y precios
-        session.cart = validation.products.map(p => ({
-          id: p.id,
-          quantity: session.cart.find(item => 
-            this.erp.findProduct(item.id).then(result => result?.id === p.id)
-          )?.quantity || 1,
-          price: p.price
-        }))
+        // Si pasa la validación, actualizar el carrito con datos reales
+        // Mapear los productos validados con sus nombres reales
+        session.cart = validation.products.map(p => {
+          // Encontrar la cantidad que el usuario pidió
+          const tempItem = tempCart.find(t => 
+            t.id === p.name || // Intentar match por nombre
+            t.id === p.id ||   // Intentar match por ID
+            this.erp.findProduct(t.id).then(result => result?.id === p.id)
+          )
+          
+          return {
+            id: p.id,
+            name: p.name, // ← NOMBRE REAL DEL PRODUCTO
+            quantity: tempItem?.quantity || 1,
+            price: p.price
+          }
+        })
 
-        // Si ya tiene nombre, pasar a confirmación; si no, preguntar nombre
+        session.customerName = interpreted.customerName || undefined
+        session.rawMessage = message
+        
         if (session.customerName) {
           session.state = 'awaiting_confirmation'
           this.updateSession(userId, session)
@@ -246,17 +255,16 @@ export class ChatbotService {
       const interpreted = await this.gemini.interpretMessage(message)
       
       if (interpreted.products && interpreted.products.length > 0) {
-        const newCart = interpreted.products.map(p => ({
+        const tempCart = interpreted.products.map(p => ({
           id: p.id,
+          name: p.id,
           quantity: p.quantity || 1,
           price: p.price || 0
         }))
         
-        // Validar productos contra el ERP
-        const validation = await this.erp.validateCart(newCart.map(item => ({
-          id: item.id,
-          quantity: item.quantity
-        })))
+        const validation = await this.erp.validateCart(
+          tempCart.map(item => ({ id: item.id, quantity: item.quantity }))
+        )
 
         if (!validation.valid) {
           let errorMessage = 'Algunos productos no estan disponibles:\n\n'
@@ -276,8 +284,7 @@ export class ChatbotService {
           if (validation.stockIssues.length > 0) {
             errorMessage += 'Problemas de stock:\n'
             validation.stockIssues.forEach(item => {
-              const product = validation.products.find(p => p.id === item.id)
-              errorMessage += `  - ${product?.name || item.id}: solicitaste ${item.requested}, disponible ${item.available}\n`
+              errorMessage += `  - ${item.name}: solicitaste ${item.requested}, disponible ${item.available}\n`
             })
             errorMessage += '\n'
           }
@@ -286,13 +293,19 @@ export class ChatbotService {
           return errorMessage
         }
 
-        session.cart = validation.products.map(p => ({
-          id: p.id,
-          quantity: newCart.find(item => 
-            this.erp.findProduct(item.id).then(result => result?.id === p.id)
-          )?.quantity || 1,
-          price: p.price
-        }))
+        session.cart = validation.products.map(p => {
+          const tempItem = tempCart.find(t => 
+            t.id === p.name || 
+            t.id === p.id ||
+            this.erp.findProduct(t.id).then(result => result?.id === p.id)
+          )
+          return {
+            id: p.id,
+            name: p.name, // ← NOMBRE REAL
+            quantity: tempItem?.quantity || 1,
+            price: p.price
+          }
+        })
         session.customerName = interpreted.customerName || session.customerName || undefined
         session.rawMessage = message
         
@@ -320,20 +333,42 @@ export class ChatbotService {
     }
   }
 
+  /**
+   * CONSTRUYE EL MENSAJE CON NOMBRES REALES DE PRODUCTOS
+   */
   private buildProductListMessage(session: Session): string {
     const productList = session.cart
-      .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
+      .map((item, i) => `${i + 1}. ${item.name} — ${item.quantity} unidad(es)`)
       .join('\n')
     
     return `He identificado estos productos:\n\n${productList}`
   }
 
+  /**
+   * CONSTRUYE EL RESUMEN CON NOMBRES REALES
+   */
   private buildConfirmationMessage(session: Session): string {
     const productList = session.cart
-      .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
+      .map((item, i) => `${i + 1}. ${item.name} — ${item.quantity} unidad(es)`)
       .join('\n')
     
-    return `Resumen del pedido:\n\n${productList}\n\n👤 Cliente: ${session.customerName || 'No especificado'}\n📍 Direccion: ${session.address || 'No especificada'}\n\nDeseas confirmar el pedido?\n\nResponde "Si" para confirmar, "No" para corregir, o "Cancelar" para cancelar.`
+    const total = session.cart.reduce(
+      (sum, p) => sum + (p.price || 0) * p.quantity,
+      0
+    )
+    
+    let message = `Resumen del pedido:\n\n${productList}`
+    
+    if (total > 0) {
+      message += `\n\n💰 Total estimado: $${total.toFixed(2)}`
+    }
+    
+    message += `\n\n👤 Cliente: ${session.customerName || 'No especificado'}`
+    message += `\n📍 Direccion: ${session.address || 'No especificada'}`
+    message += '\n\nDeseas confirmar el pedido?'
+    message += '\n\nResponde "Si" para confirmar, "No" para corregir, o "Cancelar" para cancelar.'
+    
+    return message
   }
 
   private async confirmOrder(userId: string): Promise<string> {
@@ -357,6 +392,7 @@ export class ChatbotService {
         customer_name: session.customerName || null,
         items: session.cart.map(p => ({
           id: p.id,
+          name: p.name,
           quantity: p.quantity,
           price: p.price || 0,
           subtotal: (p.price || 0) * p.quantity
@@ -382,7 +418,7 @@ export class ChatbotService {
       }
 
       const productList = session.cart
-        .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
+        .map((item, i) => `${i + 1}. ${item.name} — ${item.quantity} unidad(es)`)
         .join('\n')
       
       this.clearSession(userId)
