@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export interface Session {
   userId: string
-  state: 'idle' | 'awaiting_order' | 'awaiting_address' | 'awaiting_confirmation' | 'awaiting_correction' | 'awaiting_name'
+  state: 'idle' | 'awaiting_order' | 'awaiting_address' | 'awaiting_confirmation' | 'awaiting_correction'
   cart: CartItem[]
   customerName?: string
   address?: string
@@ -14,8 +14,8 @@ export interface Session {
 }
 
 export interface CartItem {
-  id: string        // UUID del producto
-  name: string      // NOMBRE REAL del producto (para mostrar al usuario)
+  id: string
+  name: string
   quantity: number
   price?: number
 }
@@ -85,9 +85,6 @@ export class ChatbotService {
       case 'awaiting_order':
         return await this.handleOrderState(userId, message)
       
-      case 'awaiting_name':
-        return await this.handleNameState(userId, message)
-      
       case 'awaiting_address':
         return await this.handleAddressState(userId, message)
       
@@ -109,15 +106,13 @@ export class ChatbotService {
       if (interpreted.products && interpreted.products.length > 0) {
         const session = this.getSession(userId)
         
-        // Crear carrito temporal con los nombres que vienen de Gemini
         const tempCart = interpreted.products.map(p => ({
           id: p.id,
-          name: p.id, // Guardamos el nombre original temporalmente
+          name: p.id,
           quantity: p.quantity || 1,
           price: p.price || 0
         }))
         
-        // Validar productos contra el ERP
         const validation = await this.erp.validateCart(
           tempCart.map(item => ({ id: item.id, quantity: item.quantity }))
         )
@@ -149,36 +144,30 @@ export class ChatbotService {
           return errorMessage
         }
 
-        // Si pasa la validación, actualizar el carrito con datos reales
-        // Mapear los productos validados con sus nombres reales
         session.cart = validation.products.map(p => {
-          // Encontrar la cantidad que el usuario pidió
           const tempItem = tempCart.find(t => 
-            t.id === p.name || // Intentar match por nombre
-            t.id === p.id ||   // Intentar match por ID
-            this.erp.findProduct(t.id).then(result => result?.id === p.id)
+            t.id === p.name || 
+            t.id === p.id
           )
-          
           return {
             id: p.id,
-            name: p.name, // ← NOMBRE REAL DEL PRODUCTO
+            name: p.name,
             quantity: tempItem?.quantity || 1,
             price: p.price
           }
         })
 
-        session.customerName = interpreted.customerName || undefined
+        // Guardar nombre si viene de Gemini (pero NO saltamos a confirmación)
+        if (interpreted.customerName) {
+          session.customerName = interpreted.customerName
+        }
+        
         session.rawMessage = message
         
-        if (session.customerName) {
-          session.state = 'awaiting_confirmation'
-          this.updateSession(userId, session)
-          return this.buildConfirmationMessage(session)
-        } else {
-          session.state = 'awaiting_name'
-          this.updateSession(userId, session)
-          return this.buildProductListMessage(session) + '\n\nCual es tu nombre?'
-        }
+        // SIEMPRE vamos a pedir dirección primero
+        session.state = 'awaiting_address'
+        this.updateSession(userId, session)
+        return this.buildProductListMessage(session) + '\n\nPor favor, ingresa tu direccion de entrega.'
       }
       
       return 'No pude identificar productos en tu mensaje. Por favor, intenta con un formato como:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /help para mas ayuda.'
@@ -192,26 +181,22 @@ export class ChatbotService {
     return this.handleIdleState(userId, message)
   }
 
-  private async handleNameState(userId: string, message: string): Promise<string> {
-    const session = this.getSession(userId)
-    const name = message.trim()
-    
-    if (name.length < 2) {
-      return 'Por favor, ingresa un nombre valido (minimo 2 caracteres).'
-    }
-    
-    session.customerName = name
-    session.state = 'awaiting_confirmation'
-    this.updateSession(userId, session)
-    
-    return this.buildConfirmationMessage(session)
-  }
-
   private async handleAddressState(userId: string, message: string): Promise<string> {
     const session = this.getSession(userId)
-    session.address = message
+    
+    // La dirección puede ser cualquier cosa, pero validamos que no esté vacía
+    if (!message.trim() || message.trim().length < 3) {
+      return 'Por favor, ingresa una direccion valida (minimo 3 caracteres).'
+    }
+    
+    session.address = message.trim()
     session.state = 'awaiting_confirmation'
     this.updateSession(userId, session)
+    
+    // Verificar si tenemos nombre
+    if (!session.customerName) {
+      return this.buildConfirmationMessage(session) + '\n\nAntes de confirmar, cual es tu nombre?'
+    }
     
     return this.buildConfirmationMessage(session)
   }
@@ -221,8 +206,9 @@ export class ChatbotService {
     const session = this.getSession(userId)
     
     if (lowerMsg === 'si' || lowerMsg === 'sí' || lowerMsg === 'confirmar') {
+      // Verificar que tengamos nombre y dirección
       if (!session.customerName) {
-        session.state = 'awaiting_name'
+        session.state = 'awaiting_address'
         this.updateSession(userId, session)
         return 'Por favor, ingresa tu nombre para continuar.'
       }
@@ -243,6 +229,13 @@ export class ChatbotService {
     if (lowerMsg === 'cancelar' || lowerMsg === 'cancel') {
       this.clearSession(userId)
       return 'Pedido cancelado. Puedes comenzar de nuevo con /start'
+    }
+    
+    // Si el usuario responde con un nombre en lugar de sí/no, guardarlo
+    if (!session.customerName && lowerMsg.length > 2) {
+      session.customerName = message.trim()
+      this.updateSession(userId, session)
+      return this.buildConfirmationMessage(session)
     }
     
     return 'No entendi tu respuesta. Responde "Si" para confirmar, "No" para corregir, o "Cancelar" para cancelar.'
@@ -296,25 +289,23 @@ export class ChatbotService {
         session.cart = validation.products.map(p => {
           const tempItem = tempCart.find(t => 
             t.id === p.name || 
-            t.id === p.id ||
-            this.erp.findProduct(t.id).then(result => result?.id === p.id)
+            t.id === p.id
           )
           return {
             id: p.id,
-            name: p.name, // ← NOMBRE REAL
+            name: p.name,
             quantity: tempItem?.quantity || 1,
             price: p.price
           }
         })
-        session.customerName = interpreted.customerName || session.customerName || undefined
-        session.rawMessage = message
         
-        if (!session.customerName) {
-          session.state = 'awaiting_name'
-          this.updateSession(userId, session)
-          return this.buildProductListMessage(session) + '\n\nCual es tu nombre?'
+        if (interpreted.customerName) {
+          session.customerName = interpreted.customerName
         }
         
+        session.rawMessage = message
+        
+        // SIEMPRE vamos a pedir dirección primero (o confirmar si ya la tiene)
         if (!session.address) {
           session.state = 'awaiting_address'
           this.updateSession(userId, session)
@@ -333,9 +324,6 @@ export class ChatbotService {
     }
   }
 
-  /**
-   * CONSTRUYE EL MENSAJE CON NOMBRES REALES DE PRODUCTOS
-   */
   private buildProductListMessage(session: Session): string {
     const productList = session.cart
       .map((item, i) => `${i + 1}. ${item.name} — ${item.quantity} unidad(es)`)
@@ -344,9 +332,6 @@ export class ChatbotService {
     return `He identificado estos productos:\n\n${productList}`
   }
 
-  /**
-   * CONSTRUYE EL RESUMEN CON NOMBRES REALES
-   */
   private buildConfirmationMessage(session: Session): string {
     const productList = session.cart
       .map((item, i) => `${i + 1}. ${item.name} — ${item.quantity} unidad(es)`)
@@ -469,11 +454,11 @@ export class ChatbotService {
   }
 
   private getWelcomeMessage(): string {
-    return 'Bienvenido a WhatsOrder!\n\nPuedes hacer tu pedido de forma natural:\n\n"Quiero 2 litros de leche, 1 pan y 3 manzanas"\n\nTe preguntare tu nombre, direccion y confirmacion antes de procesarlo.\n\nComandos disponibles:\n/help - Ver ayuda\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso'
+    return 'Bienvenido a WhatsOrder!\n\nPuedes hacer tu pedido de forma natural:\n\n"Quiero 2 litros de leche, 1 pan y 3 manzanas"\n\nTe preguntare tu direccion de entrega y nombre antes de confirmar.\n\nComandos disponibles:\n/help - Ver ayuda\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso'
   }
 
   private getHelpMessage(): string {
-    return 'Ayuda de WhatsOrder:\n\nPara hacer un pedido, escribe los productos que deseas:\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nTe preguntare:\n1. Tu nombre\n2. Direccion de entrega\n3. Confirmacion del pedido\n\nComandos:\n/start - Iniciar el bot\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso\n/help - Ver esta ayuda'
+    return 'Ayuda de WhatsOrder:\n\nPara hacer un pedido, escribe los productos que deseas:\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nTe preguntare:\n1. Direccion de entrega\n2. Tu nombre\n3. Confirmacion del pedido\n\nComandos:\n/start - Iniciar el bot\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso\n/help - Ver esta ayuda'
   }
 }
 
