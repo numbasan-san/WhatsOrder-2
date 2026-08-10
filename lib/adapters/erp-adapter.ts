@@ -88,21 +88,34 @@ export class ERPAdapter implements ExternalServiceAdapter {
    */
   async findProduct(query: string): Promise<Product | null> {
     const products = await this.getProducts()
+    
+    // Si la query es un UUID, intentar buscar por ID exacto
+    if (query.includes('-') && query.length > 30) {
+      const exactId = products.find(p => p.id === query)
+      if (exactId) return exactId
+    }
+    
     const normalizedQuery = this.normalize(query)
 
     if (!normalizedQuery || normalizedQuery.length < 2) {
       return null
     }
 
-    // 1. Buscar coincidencia exacta
+    // Primero buscar coincidencia exacta con el nombre original (sin normalizar)
     let found = products.find(p => 
-      this.normalize(p.name) === normalizedQuery ||
-      this.normalize(p.sku) === normalizedQuery
+      p.name.toLowerCase() === query.toLowerCase() ||
+      p.name.toLowerCase() === normalizedQuery
     )
-
     if (found) return found
 
-    // 2. Buscar coincidencia parcial con score
+    // Buscar por SKU
+    found = products.find(p => 
+      p.sku.toLowerCase() === query.toLowerCase() ||
+      p.sku.toLowerCase() === normalizedQuery
+    )
+    if (found) return found
+
+    // Buscar coincidencia parcial con score
     const scored = products.map(p => ({
       product: p,
       score: this.matchScore(normalizedQuery, p.name)
@@ -112,37 +125,8 @@ export class ERPAdapter implements ExternalServiceAdapter {
       .filter(s => s.score > 0)
       .sort((a, b) => b.score - a.score)
 
-    if (best.length > 0 && best[0].score >= 2) {
+    if (best.length > 0 && best[0].score >= 1) {
       return best[0].product
-    }
-
-    // 3. Buscar por SKU
-    const skuFound = products.find(p => 
-      this.normalize(p.sku) === normalizedQuery
-    )
-
-    if (skuFound) return skuFound
-
-    // 4. Buscar por token individual
-    const tokens = this.tokenize(normalizedQuery)
-    for (const token of tokens) {
-      if (token.length < 3) continue
-      const tokenFound = products.find(p => 
-        this.normalize(p.name).includes(token) ||
-        this.normalize(p.sku).includes(token)
-      )
-      if (tokenFound) return tokenFound
-    }
-
-    // 5. Buscar por palabras clave
-    const words = normalizedQuery.split(' ')
-    for (const word of words) {
-      if (word.length < 3) continue
-      const wordFound = products.find(p => 
-        this.normalize(p.name).includes(word) ||
-        this.normalize(p.sku).includes(word)
-      )
-      if (wordFound) return wordFound
     }
 
     return null
