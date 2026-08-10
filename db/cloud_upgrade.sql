@@ -134,9 +134,11 @@ alter table rate_limits        enable row level security;
 alter table audit_log          enable row level security;
 
 drop policy if exists pedidos_auth_all on pedidos;
-create policy pedidos_auth_all on pedidos for all to authenticated using (true) with check (true);
+drop policy if exists pedidos_auth_read on pedidos;
+create policy pedidos_auth_read on pedidos for select to authenticated using (true);
 drop policy if exists productos_auth_all on productos;
-create policy productos_auth_all on productos for all to authenticated using (true) with check (true);
+drop policy if exists productos_auth_read on productos;
+create policy productos_auth_read on productos for select to authenticated using (true);
 drop policy if exists profiles_auth_read on user_profiles;
 create policy profiles_auth_read on user_profiles for select to authenticated using (true);
 drop policy if exists audit_auth_read on audit_log;
@@ -146,5 +148,5 @@ create policy audit_auth_read on audit_log for select to authenticated using (tr
 grant usage on schema public to anon, authenticated, service_role;
 grant all on all tables in schema public to service_role;
 grant all on all sequences in schema public to service_role;
-grant select, insert, update, delete on pedidos, productos to authenticated;
+grant select on pedidos, productos to authenticated;
 grant select on user_profiles, audit_log to authenticated;
