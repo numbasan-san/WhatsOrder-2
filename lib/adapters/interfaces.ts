@@ -1,4 +1,3 @@
-// Interfaz unificada para servicios externos
 export interface ExternalServiceAdapter {
   send(data: PedidoData): Promise<PedidoResponse>
   queryStock(productId: string): Promise<StockInfo>
@@ -7,17 +6,17 @@ export interface ExternalServiceAdapter {
 }
 
 export interface PedidoData {
-  orderId: string
   customerPhone: string
   products: ProductItem[]
   deliveryAddress: string
   notes?: string
+  orderId?: string
 }
 
 export interface ProductItem {
-  price: number
   id: string
   quantity: number
+  price?: number
 }
 
 export interface PedidoResponse {
