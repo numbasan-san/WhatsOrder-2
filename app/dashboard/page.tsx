@@ -27,7 +27,6 @@ export default function DashboardPage() {
   const rechazados = useMemo(() => pedidos.filter((p) => p.status === 'rejected'), [pedidos]);
   const totalVentas = useMemo(() => aprobados.reduce((sum, p) => sum + (p.total || 0), 0), [aprobados]);
 
-  // Productos más vendidos
   const topProducts = useMemo(() => {
     const counts: Record<string, number> = {};
     aprobados.forEach((p) => p.items.forEach((i: any) => (counts[i.product] = (counts[i.product] || 0) + i.quantity)));
@@ -46,8 +45,6 @@ export default function DashboardPage() {
   const ultimosPendientes = useMemo(() => ultimos(pendientes), [pendientes]);
   const ultimosAprobados = useMemo(() => ultimos(aprobados), [aprobados]);
   const ultimosRechazados = useMemo(() => ultimos(rechazados), [rechazados]);
-
-  // Actividad reciente (todos los pedidos ordenados por fecha)
   const actividadReciente = useMemo(() => ultimos(pedidos), [pedidos]);
 
   return (
@@ -62,7 +59,6 @@ export default function DashboardPage() {
         </button>
       </PageHeader>
 
-      {/* Tarjetas de estadísticas */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard icon={Package} label="Total Pedidos" value={pedidos.length} tone="slate" />
         <StatCard icon={Clock} label="Pendientes" value={pendientes.length} tone="amber" />
@@ -71,20 +67,19 @@ export default function DashboardPage() {
         <StatCard icon={Wallet} label="Ventas Totales" value={formatCurrency(totalVentas)} tone="brand" />
       </div>
 
-      {/* Gráficos */}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100">
+        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-700">Ventas por Día</h3>
-            <span className="text-xs text-slate-400">Esta semana</span>
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Ventas por Día</h3>
+            <span className="text-xs text-slate-400 dark:text-slate-500">Esta semana</span>
           </div>
           <WeeklyBarChart labels={DIAS} values={ventasPorDia} />
         </div>
 
-        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100">
+        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-700">Pedidos por Día</h3>
-            <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Pedidos por Día</h3>
+            <span className="flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
               <TrendingUp className="h-3 w-3" /> +12% vs semana pasada
             </span>
           </div>
@@ -92,26 +87,24 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Productos más vendidos y Actividad reciente */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        {/* Productos más vendidos */}
-        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100">
-          <h3 className="mb-4 text-sm font-semibold text-slate-700">Productos Más Vendidos</h3>
+        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+          <h3 className="mb-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Productos Más Vendidos</h3>
           {topProducts.length === 0 ? (
             <EmptyState title="Sin productos vendidos aún" />
           ) : (
             <div className="space-y-3">
               {topProducts.map(([product, qty], index) => (
                 <div key={product} className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-xs font-bold text-slate-500 dark:text-slate-400">
                     {index + 1}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="truncate font-medium text-slate-700">{product}</span>
-                      <span className="ml-2 shrink-0 text-slate-400">{qty} un.</span>
+                      <span className="truncate font-medium text-slate-700 dark:text-slate-300">{product}</span>
+                      <span className="ml-2 shrink-0 text-slate-400 dark:text-slate-500">{qty} un.</span>
                     </div>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
                       <div
                         className="h-full rounded-full bg-brand-500"
                         style={{ width: `${(qty / topProducts[0][1]) * 100}%` }}
@@ -124,9 +117,8 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Actividad Reciente */}
-        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100">
-          <h3 className="mb-4 text-sm font-semibold text-slate-700">Actividad Reciente</h3>
+        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+          <h3 className="mb-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Actividad Reciente</h3>
           <div className="space-y-4">
             {actividadReciente.length === 0 ? (
               <EmptyState title="Sin actividad reciente" />
@@ -141,13 +133,13 @@ export default function DashboardPage() {
                     }`}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-slate-600">
-                      <span className="font-semibold text-slate-800">{p.customer.name}</span> —{' '}
+                    <p className="truncate text-sm text-slate-600 dark:text-slate-400">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{p.customer.name}</span> —{' '}
                       {p.status === 'pending' ? 'Pendiente' : 
                        p.status === 'approved' ? 'Aprobado' : 
                        'Rechazado'}
                     </p>
-                    <p className="text-xs text-slate-400">{formatDateTime(p.created_at)}</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">{formatDateTime(p.created_at)}</p>
                   </div>
                 </div>
               ))
@@ -156,7 +148,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Últimos pedidos por estado */}
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <BoardColumn title="Últimos Pendientes" count={pendientes.length} dotClass="bg-amber-400">
           {ultimosPendientes.length === 0 ? (
@@ -192,14 +183,14 @@ export default function DashboardPage() {
 
 function BoardColumn({ title, count, dotClass, children }: any) {
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-card ring-1 ring-slate-100">
+    <div className="rounded-2xl bg-white dark:bg-slate-800 p-4 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
       <div className="mb-3 flex items-center justify-between px-1">
-        <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
           <span className={`h-2 w-2 rounded-full ${dotClass}`} /> {title}
         </span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{count}</span>
+        <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2 py-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">{count}</span>
       </div>
       <div className="max-h-[520px] space-y-3 overflow-y-auto scroll-thin pr-1">{children}</div>
     </div>
   );
-}
+} 

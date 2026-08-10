@@ -3,17 +3,17 @@ import { CheckCircle2, Clock, XCircle, LucideIcon } from 'lucide-react';
 const CONFIG: Record<string, { label: string; className: string; Icon: LucideIcon }> = {
   pending: {
     label: 'Pendiente',
-    className: 'bg-amber-50 text-amber-700 ring-amber-600/20',
+    className: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-400 dark:ring-amber-500/20',
     Icon: Clock,
   },
   approved: {
     label: 'Aprobado',
-    className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+    className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-400 dark:ring-emerald-500/20',
     Icon: CheckCircle2,
   },
   rejected: {
     label: 'Rechazado',
-    className: 'bg-rose-50 text-rose-700 ring-rose-600/20',
+    className: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-400 dark:ring-rose-500/20',
     Icon: XCircle,
   },
 };

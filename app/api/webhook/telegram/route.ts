@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'ok' })
     }
     
-    // Procesar callback de botones (fallback)
+    // Procesar callback de botones
     if (body.callback_query) {
       const callback = body.callback_query
       const chatId = callback.message.chat.id.toString()
@@ -52,27 +52,24 @@ export async function GET() {
 async function handleCallback(callbackData: string, chatId: string, callbackId: string) {
   const parts = callbackData.split('_')
   const action = parts[0]
+  const orderId = parts[1]
 
-  if (action === 'confirm') {
-    const response = await chatbotService.handleMessage(chatId, 'Sí')
-    await telegram.sendSimpleMessage(chatId, response)
-    await answerCallback(callbackId, 'Procesando...')
-    return
-  }
-
-  if (action === 'cancel') {
-    const response = await chatbotService.handleMessage(chatId, 'Cancelar')
-    await telegram.sendSimpleMessage(chatId, response)
-    await answerCallback(callbackId, 'Cancelado')
-    return
-  }
-
-  if (action === 'contact') {
+  if (action === 'confirm' && orderId) {
+    // El botón de confirmación ahora se maneja via mensaje
     await telegram.sendSimpleMessage(
       chatId,
-      '📞 Un agente te contactará pronto. Mientras tanto, puedes escribirnos con más detalles.'
+      '✅ Pedido confirmado. Un agente lo revisará pronto.'
     )
-    await answerCallback(callbackId, 'Soporte contactado')
+    await answerCallback(callbackId, 'Pedido confirmado')
+    return
+  }
+
+  if (action === 'cancel' && orderId) {
+    await telegram.sendSimpleMessage(
+      chatId,
+      '❌ Pedido cancelado.'
+    )
+    await answerCallback(callbackId, 'Pedido cancelado')
     return
   }
 
@@ -81,11 +78,8 @@ async function handleCallback(callbackData: string, chatId: string, callbackId: 
 
 async function answerCallback(callbackId: string, text: string) {
   try {
-    const token = process.env.TELEGRAM_BOT_TOKEN
-    const apiUrl = process.env.TELEGRAM_BOT_API_URL || `https://api.telegram.org/bot${token}`
-    
     await fetch(
-      `${apiUrl}/answerCallbackQuery`,
+      `${process.env.TELEGRAM_BOT_API_URL}/answerCallbackQuery`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

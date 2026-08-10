@@ -18,9 +18,9 @@ const FILTERS = [
 ];
 
 const TYPE_STYLES: Record<string, string> = {
-  creacion: 'bg-sky-50 text-sky-700 ring-sky-600/20',
-  aprobacion: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  rechazo: 'bg-rose-50 text-rose-700 ring-rose-600/20',
+  creacion: 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/30 dark:text-sky-400 dark:ring-sky-500/20',
+  aprobacion: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20',
+  rechazo: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/30 dark:text-rose-400 dark:ring-rose-500/20',
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -110,14 +110,14 @@ function MonitoreoContent() {
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        <ListFilter className="h-4 w-4 text-slate-400" />
+        <ListFilter className="h-4 w-4 text-slate-400 dark:text-slate-500" />
         {FILTERS.map((f) => (
           <button
             key={f.key}
             type="button"
             onClick={() => setFilterType(f.key)}
             className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-              filterType === f.key ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50'
+              filterType === f.key ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
             }`}
           >
             {f.label}
@@ -125,10 +125,10 @@ function MonitoreoContent() {
         ))}
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-100">
+      <div className="mt-4 overflow-hidden rounded-2xl bg-white dark:bg-slate-800 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
         <div className="max-h-[600px] overflow-auto scroll-thin">
           <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+            <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Pedido</th>
                 <th className="px-4 py-3 font-medium">Cliente</th>
@@ -139,19 +139,19 @@ function MonitoreoContent() {
                 <th className="px-4 py-3 font-medium">IP</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
               {filteredLogs.slice(0, 50).map((log) => (
-                <tr key={log.id} className="transition hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-500">#{log.orderId}</td>
-                  <td className="px-4 py-3 font-medium text-slate-800">{log.customer}</td>
-                  <td className="px-4 py-3 text-slate-600">{log.action}</td>
-                  <td className="px-4 py-3 text-slate-500">{log.user}</td>
+                <tr key={log.id} className="transition hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                  <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">#{log.orderId}</td>
+                  <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">{log.customer}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{log.action}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{log.user}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TYPE_STYLES[log.type]}`}>
                       {TYPE_LABEL[log.type]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                     {new Date(log.timestamp).toLocaleString('es-DO', {
                       year: 'numeric',
                       month: '2-digit',
@@ -162,7 +162,7 @@ function MonitoreoContent() {
                       hour12: true,
                     })}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-400">{log.ip}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-400 dark:text-slate-500">{log.ip}</td>
                 </tr>
               ))}
             </tbody>

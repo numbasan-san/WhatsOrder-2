@@ -22,6 +22,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
   const loadPedidos = useCallback(async () => {
     try {
       setLoading(true);
+      console.log('🔄 Cargando pedidos desde Supabase...');
 
       const { data, error } = await supabase
         .from('pedidos')
@@ -29,8 +30,12 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         .order('created_at', { ascending: false });
 
       if (error) {
+        console.error('❌ Error en la consulta:', error);
         throw error;
       }
+
+      console.log('✅ Datos recibidos:', data);
+      console.log(`📦 Total de pedidos: ${data?.length || 0}`);
 
       if (!data || data.length === 0) {
         setPedidos([]);
@@ -38,7 +43,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Mapear los datos
+      // Mapear los datos de Supabase al formato esperado por el frontend
       const mappedPedidos = data.map((p: any) => ({
         id: p.id,
         customer: {
@@ -70,7 +75,10 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         notes: p.notes || null,
       }));
 
+      console.log('✅ Pedidos mapeados:', mappedPedidos);
       setPedidos(mappedPedidos);
+    } catch (error) {
+      console.error('❌ Error cargando pedidos:', error);
     } finally {
       setLoading(false);
     }
@@ -82,6 +90,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
 
   const aprobarPedido = useCallback(async (id: string) => {
     try {
+      console.log(`✅ Aprobando pedido ${id}...`);
       const { error } = await supabase
         .from('pedidos')
         .update({
@@ -92,13 +101,16 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         .eq('id', id);
 
       if (error) throw error;
+      console.log('✅ Pedido aprobado');
       await loadPedidos();
     } catch (error) {
+      console.error('❌ Error aprobando pedido:', error);
     }
   }, [supabase, loadPedidos]);
 
   const rechazarPedido = useCallback(async (id: string, motivo: string) => {
     try {
+      console.log(`❌ Rechazando pedido ${id}...`);
       const { error } = await supabase
         .from('pedidos')
         .update({
@@ -110,6 +122,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         .eq('id', id);
 
       if (error) throw error;
+      console.log('✅ Pedido rechazado');
       await loadPedidos();
     } catch (error) {
       console.error('❌ Error rechazando pedido:', error);
@@ -118,11 +131,43 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
 
   const agregarPedido = useCallback(async (datos: any) => {
     try {
+      console.log('📝 Agregando nuevo pedido...');
+      console.log('📝 Datos recibidos:', datos);
+
       const items = datos.items.map((i: any) => ({
         product: i.product,
         quantity: Number(i.quantity),
-        subtotal: i.subtotal || 0,
-      }))
+        subtotal: (i.price || 0) * Number(i.quantity) || 0,
+      }));
+
+      const total = items.reduce((sum: number, i: any) => sum + (i.subtotal || 0), 0);
+
+      const nuevoPedido = {
+        customer_name: datos.customer_name,
+        customer_phone: datos.customer_phone,
+        delivery_address: datos.delivery_address || 'Sin dirección',
+        items: items,
+        total: total,
+        status: 'pending',
+        source: 'dashboard',
+        notes: datos.delivery_instructions || '',
+        created_by: 'CSR-Admin',
+        created_at: new Date().toISOString(),
+      };
+
+      console.log('📝 Insertando en Supabase:', nuevoPedido);
+
+      const { error } = await supabase
+        .from('pedidos')
+        .insert(nuevoPedido);
+
+      if (error) {
+        console.error('❌ Error en insert:', error);
+        throw error;
+      }
+
+      console.log('✅ Pedido agregado correctamente');
+      await loadPedidos();
     } catch (error) {
       console.error('❌ Error agregando pedido:', error);
     }
