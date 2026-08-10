@@ -61,6 +61,11 @@ async function sendDraftResult(telegram: TelegramAdapter, chatId: string, res: D
 
 export async function POST(req: NextRequest) {
   try {
+    const expected = process.env.TELEGRAM_WEBHOOK_SECRET
+    if (expected && req.headers.get('x-telegram-bot-api-secret-token') !== expected) {
+      return NextResponse.json({ status: 'forbidden' }, { status: 401 })
+    }
+
     const telegram = new TelegramAdapter()
     const body = await req.json()
     const updateId: number | undefined = body.update_id

@@ -9,6 +9,7 @@ declare namespace NodeJS {
     // Telegram
     TELEGRAM_BOT_TOKEN: string
     TELEGRAM_BOT_API_URL?: string
+    TELEGRAM_WEBHOOK_SECRET?: string
 
     // Gemini
     GEMINI_API_TOKEN: string
