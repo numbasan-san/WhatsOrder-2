@@ -1,5 +1,5 @@
 import { TelegramAdapter } from '@/lib/adapters/telegram-adapter'
-import { OrderService } from './order-service'
+import { orderService } from './order-service'
 
 export interface Session {
   userId: string
@@ -102,8 +102,7 @@ export class ChatbotService {
   }
 
   private async callGeminiWithRetry(userId: string, message: string) {
-    const orderServiceInstance = new OrderService()
-    const gemini = (orderServiceInstance as any).gemini
+    const gemini = (orderService as any).gemini
     const session = this.getSession(userId)
     
     try {
