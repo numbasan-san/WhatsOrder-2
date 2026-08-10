@@ -1,14 +1,16 @@
 import { TelegramAdapter } from '@/lib/adapters/telegram-adapter'
-import { orderService } from './order-service'
+import { ERPAdapter } from '@/lib/adapters/erp-adapter'
+import { GeminiAdapter } from '@/lib/adapters/gemini-adapter'
+import { createClient } from '@/lib/supabase/server'
 
 export interface Session {
   userId: string
-  state: 'idle' | 'awaiting_order' | 'awaiting_address' | 'awaiting_confirmation'
+  state: 'idle' | 'awaiting_order' | 'awaiting_address' | 'awaiting_confirmation' | 'awaiting_correction'
   cart: CartItem[]
   customerName?: string
   address?: string
   orderId?: string
-  retryCount?: number
+  rawMessage?: string
 }
 
 export interface CartItem {
@@ -20,10 +22,13 @@ export interface CartItem {
 export class ChatbotService {
   private sessions: Map<string, Session> = new Map()
   private telegram: TelegramAdapter
-  private rateLimitResetTimes: Map<string, number> = new Map()
+  private erp: ERPAdapter
+  private gemini: GeminiAdapter
 
   constructor() {
     this.telegram = new TelegramAdapter()
+    this.erp = new ERPAdapter()
+    this.gemini = new GeminiAdapter()
   }
 
   getSession(userId: string): Session {
@@ -31,8 +36,7 @@ export class ChatbotService {
       this.sessions.set(userId, {
         userId,
         state: 'idle',
-        cart: [],
-        retryCount: 0
+        cart: []
       })
     }
     return this.sessions.get(userId)!
@@ -47,8 +51,7 @@ export class ChatbotService {
     this.sessions.set(userId, {
       userId,
       state: 'idle',
-      cart: [],
-      retryCount: 0
+      cart: []
     })
   }
 
@@ -64,7 +67,7 @@ export class ChatbotService {
 
     if (lowerMsg === '/cancel') {
       this.clearSession(userId)
-      return 'Pedido cancelado. Puedes comenzar de nuevo cuando quieras.'
+      return '🔄 Pedido cancelado. Puedes comenzar de nuevo cuando quieras con /start'
     }
 
     if (lowerMsg === '/help') {
@@ -73,13 +76,6 @@ export class ChatbotService {
 
     if (lowerMsg === '/status') {
       return await this.getStatusMessage(userId)
-    }
-
-    // Verificar si estamos en espera por rate limit
-    const resetTime = this.rateLimitResetTimes.get(userId)
-    if (resetTime && Date.now() < resetTime) {
-      const remainingSeconds = Math.ceil((resetTime - Date.now()) / 1000)
-      return `El servicio de IA está sobrecargado. Por favor, espera ${remainingSeconds} segundos antes de intentar de nuevo.`
     }
 
     // Manejar estados
@@ -96,111 +92,45 @@ export class ChatbotService {
       case 'awaiting_confirmation':
         return await this.handleConfirmationState(userId, message)
       
+      case 'awaiting_correction':
+        return await this.handleCorrectionState(userId, message)
+      
       default:
         return 'No entiendo ese comando. Escribe /help para ver las opciones disponibles.'
     }
   }
 
-  private async callGeminiWithRetry(userId: string, message: string) {
-    const gemini = (orderService as any).gemini
-    const session = this.getSession(userId)
-    
-    try {
-      const result = await gemini.interpretMessage(message)
-      // Resetear contador de reintentos en éxito
-      session.retryCount = 0
-      this.updateSession(userId, session)
-      return result
-    } catch (error: any) {
-      // Si es error 429 (rate limit)
-      if (error.message?.includes('429') || error.message?.includes('rate limit') || error.message?.includes('quota')) {
-        // Extraer tiempo de espera del mensaje de error si existe
-        let waitTime = 60 // por defecto 60 segundos
-        const match = error.message.match(/retry in ([\d.]+)s/)
-        if (match) {
-          waitTime = Math.ceil(parseFloat(match[1])) + 2 // +2 segundos de margen
-        }
-        
-        // Guardar tiempo de reset para este usuario
-        this.rateLimitResetTimes.set(userId, Date.now() + (waitTime * 1000))
-        
-        // Incrementar contador de reintentos
-        session.retryCount = (session.retryCount || 0) + 1
-        this.updateSession(userId, session)
-        
-        // Si ya hemos intentado demasiadas veces, sugerir esperar
-        if (session.retryCount && session.retryCount > 3) {
-          throw new Error(`DEMASIADOS_REINTENTOS: Espera ${waitTime} segundos`)
-        }
-        
-        throw new Error(`RATE_LIMIT: ${waitTime}`)
-      }
-      throw error
-    }
-  }
-
   private async handleIdleState(userId: string, message: string): Promise<string> {
     try {
-      const interpreted = await this.callGeminiWithRetry(userId, message)
+      const interpreted = await this.gemini.interpretMessage(message)
       
       if (interpreted.products && interpreted.products.length > 0) {
         const session = this.getSession(userId)
-        session.cart = interpreted.products.map((p: any) => ({
+        session.cart = interpreted.products.map(p => ({
           id: p.id,
           quantity: p.quantity || 1,
           price: p.price || 0
         }))
         session.customerName = interpreted.customerName || 'Cliente'
-        session.state = 'awaiting_address'
+        session.rawMessage = message
+        session.state = 'awaiting_confirmation'
         this.updateSession(userId, session)
         
         const productList = interpreted.products
-          .map((p: any, i: number) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
+          .map((p, i) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
           .join('\n')
         
-        return `He identificado estos productos:\n\n${productList}\n\nPor favor, confírmame tu dirección de entrega.`
+        return `📦 He identificado estos productos:\n\n${productList}\n\n${interpreted.customerName ? `👤 Cliente: ${interpreted.customerName}\n` : ''}${interpreted.deliveryAddress ? `📍 Dirección: ${interpreted.deliveryAddress}\n` : ''}\n\n¿Es correcto?\n\nResponde "Sí" para confirmar, "No" para corregir, o "Cancelar" para cancelar.`
       }
       
       return 'No pude identificar productos en tu mensaje. Por favor, intenta con un formato como:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /help para más ayuda.'
-    } catch (error: any) {
-      if (error.message?.includes('RATE_LIMIT') || error.message?.includes('DEMASIADOS_REINTENTOS')) {
-        const waitTime = error.message.match(/(\d+)/)?.[1] || '60'
-        return `El servicio de IA está experimentando alta demanda. Por favor, espera ${waitTime} segundos y vuelve a intentar con /start.\n\nMientras tanto, puedes usar /status para ver tus pedidos.`
-      }
-      return 'Ocurrió un error procesando tu mensaje. Por favor, intenta de nuevo más tarde.'
+    } catch {
+      return 'Ocurrió un error procesando tu mensaje. Por favor, intenta de nuevo.'
     }
   }
 
   private async handleOrderState(userId: string, message: string): Promise<string> {
-    // Similar a handleIdleState pero con mensaje de "actualizado"
-    try {
-      const interpreted = await this.callGeminiWithRetry(userId, message)
-      const session = this.getSession(userId)
-      
-      if (interpreted.products && interpreted.products.length > 0) {
-        session.cart = interpreted.products.map((p: any) => ({
-          id: p.id,
-          quantity: p.quantity || 1,
-          price: p.price || 0
-        }))
-        session.customerName = interpreted.customerName || session.customerName || 'Cliente'
-        session.state = 'awaiting_address'
-        this.updateSession(userId, session)
-        
-        const productList = interpreted.products
-          .map((p: any, i: number) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
-          .join('\n')
-        
-        return `Productos actualizados:\n\n${productList}\n\nAhora, confírmame tu dirección de entrega.`
-      }
-      
-      return 'No pude identificar productos en tu mensaje. Intenta con un formato como:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"'
-    } catch (error: any) {
-      if (error.message?.includes('RATE_LIMIT') || error.message?.includes('DEMASIADOS_REINTENTOS')) {
-        return 'El servicio de IA está sobrecargado. Espera un minuto y vuelve a intentar.'
-      }
-      return 'Ocurrió un error. Por favor, intenta de nuevo o escribe /cancel para reiniciar.'
-    }
+    return this.handleIdleState(userId, message)
   }
 
   private async handleAddressState(userId: string, message: string): Promise<string> {
@@ -213,7 +143,7 @@ export class ChatbotService {
       .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
       .join('\n')
     
-    return `Dirección guardada: ${message}\n\nResumen del pedido:\n${productList}\n\n¿Deseas confirmar el pedido?\n\nResponde "Sí" para confirmar, "No" para cancelar, o escribe /cancel para reiniciar.`
+    return `✅ Dirección guardada: ${message}\n\n📦 Resumen del pedido:\n${productList}\n\n👤 Cliente: ${session.customerName || 'No especificado'}\n\n¿Deseas confirmar el pedido?\n\nResponde "Sí" para confirmar, "No" para corregir, o "Cancelar" para cancelar.`
   }
 
   private async handleConfirmationState(userId: string, message: string): Promise<string> {
@@ -221,15 +151,68 @@ export class ChatbotService {
     const session = this.getSession(userId)
     
     if (lowerMsg === 'si' || lowerMsg === 'sí' || lowerMsg === 'confirmar') {
+      // Verificar si tiene dirección
+      if (!session.address) {
+        session.state = 'awaiting_address'
+        this.updateSession(userId, session)
+        return '📍 Por favor, ingresa tu dirección de entrega para continuar.'
+      }
       return await this.confirmOrder(userId)
     }
     
-    if (lowerMsg === 'no' || lowerMsg === 'cancelar') {
-      this.clearSession(userId)
-      return 'Pedido cancelado. Puedes comenzar de nuevo cuando quieras.'
+    if (lowerMsg === 'no' || lowerMsg === 'corregir' || lowerMsg === 'modificar') {
+      session.state = 'awaiting_correction'
+      this.updateSession(userId, session)
+      return '📝 Envía el pedido corregido con el formato:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /cancel para cancelar.'
     }
     
-    return 'No entendí tu respuesta. Responde "Sí" para confirmar o "No" para cancelar.'
+    if (lowerMsg === 'cancelar' || lowerMsg === 'cancel') {
+      this.clearSession(userId)
+      return '❌ Pedido cancelado. Puedes comenzar de nuevo con /start'
+    }
+    
+    return '❓ No entendí tu respuesta. Responde "Sí" para confirmar, "No" para corregir, o "Cancelar" para cancelar.'
+  }
+
+  private async handleCorrectionState(userId: string, message: string): Promise<string> {
+    const session = this.getSession(userId)
+    
+    try {
+      const interpreted = await this.gemini.interpretMessage(message)
+      
+      if (interpreted.products && interpreted.products.length > 0) {
+        session.cart = interpreted.products.map(p => ({
+          id: p.id,
+          quantity: p.quantity || 1,
+          price: p.price || 0
+        }))
+        session.customerName = interpreted.customerName || session.customerName || 'Cliente'
+        session.rawMessage = message
+        
+        // Si no tiene dirección, pedirla
+        if (!session.address) {
+          session.state = 'awaiting_address'
+          this.updateSession(userId, session)
+          const productList = interpreted.products
+            .map((p, i) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
+            .join('\n')
+          return `✅ Pedido actualizado:\n\n${productList}\n\n📍 Por favor, ingresa tu dirección de entrega.`
+        }
+        
+        session.state = 'awaiting_confirmation'
+        this.updateSession(userId, session)
+        
+        const productList = interpreted.products
+          .map((p, i) => `${i + 1}. ${p.id} — ${p.quantity || 1} unidad(es)`)
+          .join('\n')
+        
+        return `✅ Pedido actualizado:\n\n${productList}\n\n👤 Cliente: ${session.customerName || 'No especificado'}\n📍 Dirección: ${session.address}\n\n¿Confirmas este pedido?\n\nResponde "Sí" para confirmar, "No" para corregir, o "Cancelar" para cancelar.`
+      }
+      
+      return 'No pude identificar productos en tu mensaje. Intenta con un formato como:\n\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nO escribe /cancel para cancelar.'
+    } catch {
+      return 'Ocurrió un error. Por favor, intenta de nuevo o escribe /cancel para reiniciar.'
+    }
   }
 
   private async confirmOrder(userId: string): Promise<string> {
@@ -237,71 +220,112 @@ export class ChatbotService {
     
     if (session.cart.length === 0) {
       this.clearSession(userId)
-      return 'No hay productos en tu pedido. Comienza de nuevo.'
+      return '❌ No hay productos en tu pedido. Comienza de nuevo con /start'
     }
     
     try {
-      const result = await orderService.processTelegramOrder(
-        `Pedido de ${session.customerName}: ${session.cart.map(i => `${i.id} x${i.quantity}`).join(', ')}`,
-        userId
+      // Obtener precios del ERP
+      const productDetails = await Promise.all(
+        session.cart.map(async (item) => {
+          const price = await this.erp.getPrice(item.id, userId)
+          const stock = await this.erp.queryStock(item.id)
+          return { ...item, price, stock }
+        })
       )
+
+      const total = productDetails.reduce(
+        (sum, p) => sum + (p.price * p.quantity),
+        0
+      )
+
+      // Crear el pedido en la base de datos
+      const supabase = await createClient()
       
-      if (result.success) {
-        const orderId = result.orderId
-        const productList = session.cart
-          .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
-          .join('\n')
-        
-        this.clearSession(userId)
-        
-        return `¡Pedido #${orderId} confirmado!\n\nProductos:\n${productList}\n\nDirección: ${session.address}\n\nTotal: $${result.total?.toFixed(2) || '0.00'}\n\nUn agente revisará tu pedido y te notificará cuando sea aprobado.`
+      const insertData = {
+        customer_phone: userId,
+        customer_name: session.customerName || null,
+        items: productDetails.map(p => ({
+          id: p.id,
+          quantity: p.quantity,
+          price: p.price,
+          subtotal: p.price * p.quantity
+        })),
+        total: total,
+        status: 'pending',
+        source: 'telegram',
+        delivery_address: session.address || null,
+        notes: session.rawMessage || null
       }
       
+      console.log('Inserting order:', insertData)
+      
+      const { data: order, error } = await supabase
+        .from('pedidos')
+        .insert(insertData)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Supabase insert error:', error)
+        throw error
+      }
+
+      const productList = session.cart
+        .map((item, i) => `${i + 1}. ${item.id} — ${item.quantity} unidad(es)`)
+        .join('\n')
+      
       this.clearSession(userId)
-      return 'Ocurrió un error al procesar tu pedido. Por favor, intenta de nuevo más tarde.'
-    } catch {
+      
+      return `✅ ¡Pedido #${order.id.slice(0, 8)} confirmado!\n\n📦 Productos:\n${productList}\n\n👤 Cliente: ${session.customerName || 'No especificado'}\n📍 Dirección: ${session.address || 'No especificada'}\n\n💰 Total: $${total.toFixed(2)}\n\n📊 Un agente revisará tu pedido y te notificará cuando sea aprobado.\n\nGracias por tu compra! 🙌`
+    } catch (error) {
+      console.error('Error confirming order:', error)
       this.clearSession(userId)
-      return 'Ocurrió un error al procesar tu pedido. Por favor, intenta de nuevo más tarde.'
+      return '❌ Ocurrió un error al procesar tu pedido. Por favor, intenta de nuevo más tarde.'
     }
   }
 
   private async getStatusMessage(userId: string): Promise<string> {
     try {
-      const orders = await orderService.getOrdersByCustomer(userId)
+      const supabase = await createClient()
+      const { data, error } = await supabase
+        .from('pedidos')
+        .select('id, status, total, created_at')
+        .eq('customer_phone', userId)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      if (error) throw error
       
-      if (!orders || orders.length === 0) {
-        return 'No tienes pedidos registrados.'
+      if (!data || data.length === 0) {
+        return '📭 No tienes pedidos registrados.'
       }
       
-      const recentOrders = orders.slice(0, 5)
-      let message = 'Tus pedidos recientes:\n\n'
+      let message = '📋 Tus últimos pedidos:\n\n'
       
-      recentOrders.forEach((order: any) => {
+      data.forEach((order: any) => {
         const statusMap: Record<string, string> = {
-          pending: 'Pendiente',
-          approved: 'Aprobado',
-          rejected: 'Rechazado'
+          pending: '⏳ Pendiente',
+          approved: '✅ Aprobado',
+          rejected: '❌ Rechazado',
+          delivered: '📦 Entregado'
         }
+        const date = new Date(order.created_at).toLocaleDateString('es-DO')
         message += `#${order.id.slice(0, 8)} — ${statusMap[order.status] || order.status}\n`
-        message += `$${order.total?.toFixed(2) || '0.00'}\n\n`
+        message += `💰 $${order.total?.toFixed(2) || '0.00'} — ${date}\n\n`
       })
-      
-      if (orders.length > 5) {
-        message += `Y ${orders.length - 5} pedidos más.`
-      }
       
       return message
     } catch {
-      return 'No pude obtener el estado de tus pedidos. Por favor, intenta de nuevo.'
+      return '❌ No pude obtener el estado de tus pedidos. Por favor, intenta de nuevo.'
     }
   }
 
   private getWelcomeMessage(): string {
-    return `¡Bienvenido a WhatsOrder!\n\nPuedes hacer tu pedido de forma natural:\n\n"Quiero 2 litros de leche, 1 pan y 3 manzanas"\n\nComandos disponibles:\n/help - Ver ayuda\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso`
+    return `👋 ¡Bienvenido a WhatsOrder!\n\nPuedes hacer tu pedido de forma natural:\n\n"Quiero 2 litros de leche, 1 pan y 3 manzanas"\n\nTe pediré confirmación y dirección antes de procesarlo.\n\nComandos disponibles:\n/help - Ver ayuda\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso`
   }
 
   private getHelpMessage(): string {
-    return `Ayuda de WhatsOrder:\n\nPara hacer un pedido, escribe los productos que deseas:\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\nLuego te pediré la dirección de entrega.\n\nComandos:\n/start - Iniciar el bot\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso\n/help - Ver esta ayuda`
+    return `📖 Ayuda de WhatsOrder:\n\n📝 Para hacer un pedido, escribe los productos que deseas:\n"Quiero 2 leches, 1 pan y 3 manzanas"\n\n📌 Te pediré:\n1. Confirmación del pedido\n2. Dirección de entrega\n\n📋 Comandos:\n/start - Iniciar el bot\n/status - Ver estado de tus pedidos\n/cancel - Cancelar pedido en curso\n/help - Ver esta ayuda`
   }
 }
 
