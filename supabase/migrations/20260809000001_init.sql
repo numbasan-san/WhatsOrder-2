@@ -55,7 +55,8 @@ create table if not exists pedidos (
   approved_at timestamptz,
   rejected_by uuid references auth.users(id),
   rejected_at timestamptz,
-  rejection_reason text
+  rejection_reason text,
+  updated_at timestamptz default now()
 );
 create index if not exists pedidos_status_idx on pedidos(status);
 create index if not exists pedidos_created_at_idx on pedidos(created_at desc);

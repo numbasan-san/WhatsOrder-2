@@ -36,6 +36,9 @@ alter table pedidos add column if not exists approved_at timestamptz;
 alter table pedidos add column if not exists created_by uuid;
 alter table pedidos add column if not exists notes text;
 alter table pedidos add column if not exists delivery_address text;
+-- Cloud pedidos has a pre-existing BEFORE UPDATE trigger (update_pedidos_updated_at)
+-- that sets NEW.updated_at; without this column every UPDATE on pedidos errors.
+alter table pedidos add column if not exists updated_at timestamptz default now();
 create index if not exists pedidos_status_idx on pedidos(status);
 create index if not exists pedidos_created_at_idx on pedidos(created_at desc);
 
@@ -138,6 +141,15 @@ alter table processed_updates  enable row level security;
 alter table rate_limits        enable row level security;
 alter table audit_log          enable row level security;
 
+-- Drop legacy WIDE-OPEN policies from the original cloud setup (no-ops locally).
+drop policy if exists "Enable read access for all users" on pedidos;
+drop policy if exists "Enable insert for all users" on pedidos;
+drop policy if exists "Enable update for all users" on pedidos;
+drop policy if exists "Enable delete for all users" on pedidos;
+drop policy if exists "CSR pueden insertar pedidos" on pedidos;
+drop policy if exists "Supervisores y admins pueden actualizar pedidos" on pedidos;
+drop policy if exists "Usuarios autenticados pueden leer pedidos" on pedidos;
+
 drop policy if exists pedidos_auth_all on pedidos;
 drop policy if exists pedidos_auth_read on pedidos;
 create policy pedidos_auth_read on pedidos for select to authenticated using (true);
@@ -149,6 +161,11 @@ create policy profiles_auth_read on user_profiles for select to authenticated us
 drop policy if exists audit_auth_read on audit_log;
 create policy audit_auth_read on audit_log for select to authenticated using (true);
 -- conversation_state, processed_updates, rate_limits: RLS on, NO policies => service-key only.
+
+-- Revoke the broad legacy table grants (original setup gave anon+authenticated
+-- full INSERT/UPDATE/DELETE), then re-grant precisely. anon ends with NOTHING.
+revoke all on pedidos, productos, user_profiles, audit_log, conversation_state, processed_updates, rate_limits from anon;
+revoke all on pedidos, productos, user_profiles, audit_log, conversation_state, processed_updates, rate_limits from authenticated;
 
 grant usage on schema public to anon, authenticated, service_role;
 grant all on all tables in schema public to service_role;
