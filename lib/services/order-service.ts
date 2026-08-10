@@ -164,7 +164,11 @@ export class OrderService {
   private async transition(pedidoId: string, to: OrderStatus, patch: Record<string, unknown>): Promise<Pedido> {
     const order = await this.loadOrder(pedidoId)
     if (!canTransition(order.status, to)) {
-      throw new Error(`No se puede pasar el pedido ${pedidoId} de '${order.status}' a '${to}'`)
+      // Disallowed transition -- most commonly a customer/CSR double-tap where the pedido
+      // is already past (or never was in) the expected status. Same conflict type as the
+      // lost-race path below so callers (webhook, routes) treat both as a benign no-op
+      // ("Ya procesado" / 409) instead of surfacing a scary generic error.
+      throw new OrderTransitionConflictError(pedidoId, order.status, to)
     }
     // The UPDATE is conditioned on the status we just read (optimistic concurrency):
     // if another request already transitioned this pedido, this matches zero rows and

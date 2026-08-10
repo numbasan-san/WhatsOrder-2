@@ -97,6 +97,27 @@ describe('OrderService transition guard (confirmOrder)', () => {
     expect(caught).toMatchObject({ code: '08006' })
     expect(auditInserts).toHaveLength(0)
   })
+
+  it('disallowed transition (e.g. double-confirm on an order already pending) throws OrderTransitionConflictError, no audit written', async () => {
+    // canTransition('pending', 'pending') is false -- ALLOWED['pending'] only permits
+    // 'approved'/'rejected'. This must surface as the same conflict type as a lost race
+    // (not a generic Error), so the webhook/routes treat a double-tap as a benign no-op
+    // ("Ya procesado" / 409) instead of a scary error.
+    const alreadyPending = { id: 'p1', status: 'pending', telegram_chat_id: '111' }
+    const { client, auditInserts } = fakeSupabase(alreadyPending, { data: null, error: null })
+    const service = new OrderService(client)
+
+    let caught: unknown
+    try {
+      await service.confirmOrder('p1')
+    } catch (e) {
+      caught = e
+    }
+
+    expect(caught).toBeInstanceOf(OrderTransitionConflictError)
+    expect((caught as Error).name).toBe('OrderTransitionConflictError')
+    expect(auditInserts).toHaveLength(0)
+  })
 })
 
 /**
