@@ -45,12 +45,17 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
 
       // Mapear los datos correctamente
       const mappedPedidos = data.map((p: any) => {
-        // Transformar items: de {id, price, quantity, subtotal} a {product, quantity, subtotal}
-        const mappedItems = (p.items || []).map((item: any) => ({
-          product: item.id || item.product || 'Producto sin nombre', // ← Cambio clave: "id" → "product"
-          quantity: item.quantity || 0,
-          subtotal: item.subtotal || item.price * item.quantity || 0,
-        }));
+        // TRANSFORMAR ITEMS: Asegurar que tengan "product" como nombre legible
+        const mappedItems = (p.items || []).map((item: any) => {
+          // Buscar el nombre del producto en diferentes campos
+          const productName = item.product || item.name || item.id || 'Producto sin nombre';
+          
+          return {
+            product: productName,   // ← Nombre legible para mostrar
+            quantity: item.quantity || 0,
+            subtotal: item.subtotal || item.price * item.quantity || 0,
+          };
+        });
 
         return {
           id: p.id,
@@ -66,7 +71,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
             zone: p.delivery_zone || 'Zona sin asignar',
             instructions: p.delivery_instructions || p.notes || '',
           },
-          items: mappedItems, // ← Items transformados
+          items: mappedItems, // ← Items transformados con nombres legibles
           total: p.total || 0,
           status: p.status || 'pending',
           created_by: p.created_by || 'Sistema',
