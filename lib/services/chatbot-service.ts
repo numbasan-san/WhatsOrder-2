@@ -376,10 +376,8 @@ export class ChatbotService {
         customer_phone: userId,
         customer_name: session.customerName || null,
         items: session.cart.map(p => ({
-          id: p.id,
-          name: p.name,
+          product: p.name,
           quantity: p.quantity,
-          price: p.price || 0,
           subtotal: (p.price || 0) * p.quantity
         })),
         total: total,
