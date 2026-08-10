@@ -19,6 +19,14 @@ import WeeklyLineChart from '@/components/charts/WeeklyLineChart';
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const TZ = 'America/Santo_Domingo';
 
+const STATUS_DOT_CLASS: Record<Pedido['status'], string> = {
+  pending: 'bg-amber-400',
+  pending_confirmation: 'bg-amber-400',
+  approved: 'bg-emerald-500',
+  rejected: 'bg-rose-500',
+  cancelled: 'bg-slate-400',
+};
+
 /** yyyy-mm-dd for the given instant, as observed in TZ. */
 function ymdInTZ(iso: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
@@ -185,13 +193,7 @@ export default function DashboardPage() {
             ) : (
               actividadReciente.map((p) => (
                 <div key={p.id} className="flex items-start gap-3">
-                  <span
-                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                      p.status === 'pending' ? 'bg-amber-400' : 
-                      p.status === 'approved' ? 'bg-emerald-500' : 
-                      'bg-rose-500'
-                    }`}
-                  />
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${STATUS_DOT_CLASS[p.status]}`} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-slate-600">
                       <span className="font-semibold text-slate-800">{p.customer_name || 'Cliente sin nombre'}</span> —{' '}
