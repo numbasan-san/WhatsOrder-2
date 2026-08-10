@@ -1,13 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { 
+import {
   Package, Clock, CheckCircle2, XCircle, Wallet, Plus,
-  TrendingUp 
+  TrendingUp, TrendingDown
 } from 'lucide-react';
 import { usePedidos } from '@/context/PedidosContext';
 import { formatCurrency, formatDateTime } from '@/lib/utils/format';
-import { seededInt } from '@/lib/utils/seededRandom';
+import type { Pedido } from '@/lib/types';
 import StatCard from '@/components/dashboard/StatCard';
 import PedidoCard from '@/components/dashboard/PedidoCard';
 import PageHeader from '@/components/dashboard/PageHeader';
@@ -17,6 +17,30 @@ import WeeklyBarChart from '@/components/charts/WeeklyBarChart';
 import WeeklyLineChart from '@/components/charts/WeeklyLineChart';
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const TZ = 'America/Santo_Domingo';
+
+/** yyyy-mm-dd for the given instant, as observed in TZ. */
+function ymdInTZ(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
+    new Date(iso)
+  );
+}
+
+/** 0=Mon..6=Sun for the given instant, as observed in TZ. */
+function weekdayIndexInTZ(date: Date): number {
+  const short = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' }).format(date);
+  const map: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+  return map[short] ?? 0;
+}
+
+/** The 7 yyyy-mm-dd date strings (Mon..Sun) of the week containing `reference`, in TZ. */
+function weekDatesInTZ(reference: Date): string[] {
+  const todayIdx = weekdayIndexInTZ(reference);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(reference.getTime() + (i - todayIdx) * 86400000);
+    return ymdInTZ(d.toISOString());
+  });
+}
 
 export default function DashboardPage() {
   const { pedidos, aprobarPedido, rechazarPedido, agregarPedido } = usePedidos();
@@ -30,17 +54,38 @@ export default function DashboardPage() {
   // Productos más vendidos
   const topProducts = useMemo(() => {
     const counts: Record<string, number> = {};
-    aprobados.forEach((p) => p.items.forEach((i: any) => (counts[i.product] = (counts[i.product] || 0) + i.quantity)));
+    aprobados.forEach((p) => p.items.forEach((i) => (counts[i.product] = (counts[i.product] || 0) + i.quantity)));
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [aprobados]);
 
-  const { ventasPorDia, pedidosPorDia } = useMemo(() => {
-    const ventas = DIAS.map((_: string, i: number) => seededInt(`ventas-${i}`, 500, 3500));
-    const cuenta = DIAS.map((_: string, i: number) => seededInt(`pedidos-dia-${i}`, 2, 10));
-    return { ventasPorDia: ventas, pedidosPorDia: cuenta };
-  }, []);
+  // Ventas/Pedidos por día de la semana actual (Lun..Dom, America/Santo_Domingo), a partir de pedidos reales.
+  const { ventasPorDia, pedidosPorDia, wowPercent } = useMemo(() => {
+    const now = new Date();
+    const thisWeek = weekDatesInTZ(now);
+    const lastWeek = weekDatesInTZ(new Date(now.getTime() - 7 * 86400000));
 
-  const ultimos = (arr: any[]) =>
+    const ventas = Array(7).fill(0) as number[];
+    const cuenta = Array(7).fill(0) as number[];
+    let countThisWeek = 0;
+    let countLastWeek = 0;
+
+    pedidos.forEach((p) => {
+      const day = ymdInTZ(p.created_at);
+      const thisIdx = thisWeek.indexOf(day);
+      if (thisIdx !== -1) {
+        cuenta[thisIdx] += 1;
+        countThisWeek += 1;
+        if (p.status === 'approved') ventas[thisIdx] += p.total || 0;
+        return;
+      }
+      if (lastWeek.indexOf(day) !== -1) countLastWeek += 1;
+    });
+
+    const wow = countLastWeek > 0 ? Math.round(((countThisWeek - countLastWeek) / countLastWeek) * 100) : null;
+    return { ventasPorDia: ventas, pedidosPorDia: cuenta, wowPercent: wow };
+  }, [pedidos]);
+
+  const ultimos = (arr: Pedido[]) =>
     [...arr].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
 
   const ultimosPendientes = useMemo(() => ultimos(pendientes), [pendientes]);
@@ -84,9 +129,16 @@ export default function DashboardPage() {
         <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700">Pedidos por Día</h3>
-            <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600">
-              <TrendingUp className="h-3 w-3" /> +12% vs semana pasada
-            </span>
+            {wowPercent !== null && (
+              <span
+                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                  wowPercent >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                }`}
+              >
+                {wowPercent >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                {wowPercent >= 0 ? '+' : ''}{wowPercent}% vs semana pasada
+              </span>
+            )}
           </div>
           <WeeklyLineChart labels={DIAS} values={pedidosPorDia} />
         </div>
@@ -142,10 +194,12 @@ export default function DashboardPage() {
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-slate-600">
-                      <span className="font-semibold text-slate-800">{p.customer.name}</span> —{' '}
-                      {p.status === 'pending' ? 'Pendiente' : 
-                       p.status === 'approved' ? 'Aprobado' : 
-                       'Rechazado'}
+                      <span className="font-semibold text-slate-800">{p.customer_name || 'Cliente sin nombre'}</span> —{' '}
+                      {p.status === 'pending' ? 'Pendiente' :
+                       p.status === 'approved' ? 'Aprobado' :
+                       p.status === 'rejected' ? 'Rechazado' :
+                       p.status === 'cancelled' ? 'Cancelado' :
+                       'Por confirmar'}
                     </p>
                     <p className="text-xs text-slate-400">{formatDateTime(p.created_at)}</p>
                   </div>

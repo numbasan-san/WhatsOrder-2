@@ -1,36 +1,66 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import Modal from './Modal';
-import { CATALOGO, PRECIOS, ZONAS } from '@/lib/utils/constants';
+import { createClient } from '@/lib/supabase/client';
 import { formatCurrency } from '@/lib/utils/format';
+import type { Producto } from '@/lib/types';
+import type { ManualOrderInput } from '@/context/PedidosContext';
 
-const EMPTY_ITEM = { product: '', quantity: 1 };
+const EMPTY_ITEM = { sku: '', quantity: 1 };
 
 const initialForm = {
   customer_name: '',
   customer_phone: '',
   delivery_address: '',
-  delivery_zone: ZONAS[0],
   items: [{ ...EMPTY_ITEM }],
 };
 
 interface FormularioPedidoProps {
   open: boolean;
   onClose: () => void;
-  onAgregar: (datos: any) => Promise<void>;
+  onAgregar: (datos: ManualOrderInput) => Promise<void>;
 }
 
 export default function FormularioPedido({ open, onClose, onAgregar }: FormularioPedidoProps) {
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [catalogo, setCatalogo] = useState<Producto[]>([]);
+  const [catalogoLoading, setCatalogoLoading] = useState(false);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  useEffect(() => {
+    if (!open || catalogo.length > 0) return;
+    let active = true;
+    setCatalogoLoading(true);
+    const supabase = createClient();
+
+    const load = async () => {
+      const { data, error: fetchError } = await supabase
+        .from('productos')
+        .select('*')
+        .eq('active', true)
+        .order('name', { ascending: true });
+      if (!active) return;
+      if (!fetchError && data) setCatalogo(data as Producto[]);
+      setCatalogoLoading(false);
+    };
+    load();
+
+    return () => {
+      active = false;
+    };
+  }, [open, catalogo.length]);
+
+  const precioPorSku = (sku: string) => catalogo.find((p) => p.sku === sku)?.price ?? 0;
+  const nombrePorSku = (sku: string) => catalogo.find((p) => p.sku === sku)?.name ?? '';
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleItemChange = (index: number, field: string, value: string) => {
+  const handleItemChange = (index: number, field: 'sku' | 'quantity', value: string) => {
     const items = form.items.map((it, i) => (i === index ? { ...it, [field]: value } : it));
     setForm({ ...form, items });
   };
@@ -38,8 +68,8 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
   const addItemRow = () => setForm({ ...form, items: [...form.items, { ...EMPTY_ITEM }] });
   const removeItemRow = (index: number) => setForm({ ...form, items: form.items.filter((_, i) => i !== index) });
 
-  const itemsValidos = form.items.filter((i) => i.product && Number(i.quantity) > 0);
-  const total = itemsValidos.reduce((sum, i) => sum + (PRECIOS[i.product] || 0) * Number(i.quantity), 0);
+  const itemsValidos = form.items.filter((i) => i.sku && Number(i.quantity) > 0);
+  const total = itemsValidos.reduce((sum, i) => sum + precioPorSku(i.sku) * Number(i.quantity), 0);
 
   const resetAndClose = () => {
     setForm(initialForm);
@@ -47,7 +77,7 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
     onClose();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.customer_name.trim() || !form.customer_phone.trim()) {
       setError('Nombre y teléfono son obligatorios.');
@@ -57,8 +87,22 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
       setError('Agrega al menos un producto con cantidad válida.');
       return;
     }
-    onAgregar({ ...form, items: itemsValidos });
-    resetAndClose();
+
+    setSubmitting(true);
+    setError('');
+    try {
+      await onAgregar({
+        customer_name: form.customer_name.trim(),
+        customer_phone: form.customer_phone.trim(),
+        delivery_address: form.delivery_address.trim(),
+        items: itemsValidos.map((i) => ({ sku: i.sku, quantity: Number(i.quantity) })),
+      });
+      resetAndClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error creando pedido');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -89,33 +133,16 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Dirección de entrega</label>
-            <input
-              type="text"
-              name="delivery_address"
-              value={form.delivery_address}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
-              placeholder="Calle, número, sector"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Zona</label>
-            <select
-              name="delivery_zone"
-              value={form.delivery_zone}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
-            >
-              {ZONAS.map((z) => (
-                <option key={z} value={z}>
-                  {z}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">Dirección de entrega</label>
+          <input
+            type="text"
+            name="delivery_address"
+            value={form.delivery_address}
+            onChange={handleChange}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            placeholder="Calle, número, sector"
+          />
         </div>
 
         <div>
@@ -134,14 +161,15 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
             {form.items.map((item, idx) => (
               <div key={idx} className="flex items-center gap-2">
                 <select
-                  value={item.product}
-                  onChange={(e) => handleItemChange(idx, 'product', e.target.value)}
+                  value={item.sku}
+                  onChange={(e) => handleItemChange(idx, 'sku', e.target.value)}
+                  disabled={catalogoLoading}
                   className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 >
-                  <option value="">Seleccionar producto</option>
-                  {CATALOGO.map((p) => (
-                    <option key={p.nombre} value={p.nombre}>
-                      {p.nombre} — {formatCurrency(p.precio)}
+                  <option value="">{catalogoLoading ? 'Cargando catálogo…' : 'Seleccionar producto'}</option>
+                  {catalogo.map((p) => (
+                    <option key={p.sku} value={p.sku}>
+                      {p.name} — {formatCurrency(p.price)}
                     </option>
                   ))}
                 </select>
@@ -164,6 +192,15 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
               </div>
             ))}
           </div>
+          {itemsValidos.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-slate-400">
+              {itemsValidos.map((i, idx) => (
+                <li key={idx}>
+                  {i.quantity}× {nombrePorSku(i.sku)} — {formatCurrency(precioPorSku(i.sku) * Number(i.quantity))}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
@@ -180,9 +217,10 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
         <div className="flex gap-3 pt-1">
           <button
             type="submit"
-            className="flex-1 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
+            disabled={submitting}
+            className="flex-1 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Crear pedido
+            {submitting ? 'Creando…' : 'Crear pedido'}
           </button>
           <button
             type="button"
