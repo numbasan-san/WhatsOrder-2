@@ -27,7 +27,7 @@ function RechazadosContent() {
       <PageHeader title="Pedidos Rechazados" subtitle="Pedidos que no fueron confirmados" count={rechazados.length} countLabel="pedidos" />
 
       <div className="grid gap-5 lg:grid-cols-[380px,1fr]">
-        <div className="max-h-[75vh] space-y-2.5 overflow-y-auto scroll-thin rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 p-3 ring-1 ring-slate-100 dark:ring-slate-800 lg:max-h-[calc(100vh-180px)]">
+        <div className="max-h-[75vh] space-y-2.5 overflow-y-auto scroll-thin rounded-2xl bg-slate-50/70 p-3 ring-1 ring-slate-100 lg:max-h-[calc(100vh-180px)]">
           {rechazados.length === 0 ? (
             <EmptyState icon={XCircle} title="No hay pedidos rechazados" />
           ) : (

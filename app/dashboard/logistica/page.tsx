@@ -16,10 +16,10 @@ const FILTERS = [
 ];
 
 const STATUS_STYLES: Record<string, string> = {
-  Entregado: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20',
-  'En ruta': 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-500/20',
-  'Pendiente de entrega': 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/30 dark:text-sky-400 dark:ring-sky-500/20',
-  'No asignado': 'bg-slate-100 text-slate-500 ring-slate-300/40 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-600/40',
+  Entregado: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+  'En ruta': 'bg-amber-50 text-amber-700 ring-amber-600/20',
+  'Pendiente de entrega': 'bg-sky-50 text-sky-700 ring-sky-600/20',
+  'No asignado': 'bg-slate-100 text-slate-500 ring-slate-300/40',
 };
 
 function LogisticaContent() {
@@ -67,7 +67,7 @@ function LogisticaContent() {
             type="button"
             onClick={() => setFilter(f.key)}
             className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-              filter === f.key ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+              filter === f.key ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50'
             }`}
           >
             {f.label}
@@ -76,10 +76,10 @@ function LogisticaContent() {
       </div>
 
       <div className="mt-4 grid gap-5 lg:grid-cols-[1.4fr,1fr]">
-        <div className="overflow-hidden rounded-2xl bg-white dark:bg-slate-800 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-100">
           <div className="max-h-[560px] overflow-auto scroll-thin">
             <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
                   <th className="px-4 py-3 font-medium">Pedido</th>
                   <th className="px-4 py-3 font-medium">Cliente</th>
@@ -89,23 +89,23 @@ function LogisticaContent() {
                   <th className="px-4 py-3 font-medium">Tiempo</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
+              <tbody className="divide-y divide-slate-50">
                 {filtered.map((p) => (
                   <tr
                     key={p.id}
                     onClick={() => setSelectedId(p.id)}
-                    className={`cursor-pointer transition ${selectedId === p.id ? 'bg-brand-50/60 dark:bg-brand-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
+                    className={`cursor-pointer transition ${selectedId === p.id ? 'bg-brand-50/60' : 'hover:bg-slate-50'}`}
                   >
-                    <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">#{p.id}</td>
-                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">{p.customer.name}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{p.deliveryZone}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{p.assignedTo}</td>
+                    <td className="px-4 py-3 font-medium text-slate-500">#{p.id}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">{p.customer.name}</td>
+                    <td className="px-4 py-3 text-slate-500">{p.deliveryZone}</td>
+                    <td className="px-4 py-3 text-slate-500">{p.assignedTo}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${STATUS_STYLES[p.deliveryStatus]}`}>
                         {p.deliveryStatus}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{p.deliveryTime}</td>
+                    <td className="px-4 py-3 text-slate-500">{p.deliveryTime}</td>
                   </tr>
                 ))}
               </tbody>
@@ -118,16 +118,16 @@ function LogisticaContent() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
-          <h3 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">
+        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100">
+          <h3 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
             <MapPin className="h-4 w-4 text-brand-600" /> Mapa de Entregas
           </h3>
           {selected ? (
             <div className="animate-fade-in">
-              <div className="overflow-hidden rounded-xl bg-slate-50 dark:bg-slate-900 ring-1 ring-slate-100 dark:ring-slate-700">
+              <div className="overflow-hidden rounded-xl bg-slate-50 ring-1 ring-slate-100">
                 <svg viewBox="0 0 400 260" className="h-full w-full">
-                  <rect width="400" height="260" fill="#f1f5f9" className="dark:fill-slate-900" />
-                  <g stroke="#e2e8f0" className="dark:stroke-slate-700" strokeWidth="2">
+                  <rect width="400" height="260" fill="#f1f5f9" />
+                  <g stroke="#e2e8f0" strokeWidth="2">
                     <line x1="80" y1="0" x2="80" y2="260" />
                     <line x1="200" y1="0" x2="200" y2="260" />
                     <line x1="320" y1="0" x2="320" y2="260" />
@@ -140,29 +140,29 @@ function LogisticaContent() {
                     <animate attributeName="r" values="10;24;10" dur="2.4s" repeatCount="indefinite" />
                     <animate attributeName="opacity" values="0.5;0;0.5" dur="2.4s" repeatCount="indefinite" />
                   </circle>
-                  <text x="200" y="168" fontSize="11" fontWeight="700" fill="#1e293b" className="dark:fill-slate-300" textAnchor="middle">
+                  <text x="200" y="168" fontSize="11" fontWeight="700" fill="#1e293b" textAnchor="middle">
                     Pedido #{selected.id}
                   </text>
-                  <text x="200" y="184" fontSize="9.5" fill="#64748b" className="dark:fill-slate-400" textAnchor="middle">
+                  <text x="200" y="184" fontSize="9.5" fill="#64748b" textAnchor="middle">
                     {selected.customer.name}
                   </text>
-                  <text x="200" y="198" fontSize="9.5" fill="#64748b" className="dark:fill-slate-400" textAnchor="middle">
+                  <text x="200" y="198" fontSize="9.5" fill="#64748b" textAnchor="middle">
                     {selected.deliveryZone}
                   </text>
                 </svg>
               </div>
               <div className="mt-4 space-y-2 text-sm">
-                <p className="flex justify-between text-slate-500 dark:text-slate-400">
-                  <span>Pedido</span> <span className="font-medium text-slate-800 dark:text-slate-200">#{selected.id}</span>
+                <p className="flex justify-between text-slate-500">
+                  <span>Pedido</span> <span className="font-medium text-slate-800">#{selected.id}</span>
                 </p>
-                <p className="flex justify-between text-slate-500 dark:text-slate-400">
-                  <span>Zona</span> <span className="font-medium text-slate-800 dark:text-slate-200">{selected.deliveryZone}</span>
+                <p className="flex justify-between text-slate-500">
+                  <span>Zona</span> <span className="font-medium text-slate-800">{selected.deliveryZone}</span>
                 </p>
-                <p className="flex justify-between text-slate-500 dark:text-slate-400">
-                  <span>Estado</span> <span className="font-medium text-slate-800 dark:text-slate-200">{selected.deliveryStatus}</span>
+                <p className="flex justify-between text-slate-500">
+                  <span>Estado</span> <span className="font-medium text-slate-800">{selected.deliveryStatus}</span>
                 </p>
-                <p className="flex justify-between text-slate-500 dark:text-slate-400">
-                  <span>Tiempo estimado</span> <span className="font-medium text-slate-800 dark:text-slate-200">{selected.deliveryTime}</span>
+                <p className="flex justify-between text-slate-500">
+                  <span>Tiempo estimado</span> <span className="font-medium text-slate-800">{selected.deliveryTime}</span>
                 </p>
               </div>
             </div>

@@ -66,24 +66,24 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">Nombre del cliente *</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Nombre del cliente *</label>
             <input
               type="text"
               name="customer_name"
               value={form.customer_name}
               onChange={handleChange}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 px-3 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 transition"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
               placeholder="Ej. María Rodríguez"
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">Teléfono *</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Teléfono *</label>
             <input
               type="text"
               name="customer_phone"
               value={form.customer_phone}
               onChange={handleChange}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 px-3 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 transition"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
               placeholder="809-555-1234"
             />
           </div>
@@ -91,23 +91,23 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">Dirección de entrega</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Dirección de entrega</label>
             <input
               type="text"
               name="delivery_address"
               value={form.delivery_address}
               onChange={handleChange}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 px-3 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 transition"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
               placeholder="Calle, número, sector"
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">Zona</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Zona</label>
             <select
               name="delivery_zone"
               value={form.delivery_zone}
               onChange={handleChange}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 transition"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
             >
               {ZONAS.map((z) => (
                 <option key={z} value={z}>
@@ -120,11 +120,11 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
 
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Productos</span>
+            <span className="text-xs font-medium text-slate-500">Productos</span>
             <button
               type="button"
               onClick={addItemRow}
-              className="flex items-center gap-1 text-xs font-semibold text-brand-700 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300"
+              className="flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800"
             >
               <Plus className="h-3.5 w-3.5" /> Agregar producto
             </button>
@@ -136,7 +136,7 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
                 <select
                   value={item.product}
                   onChange={(e) => handleItemChange(idx, 'product', e.target.value)}
-                  className="min-w-0 flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 px-3 py-2 text-sm text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 transition"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 >
                   <option value="">Seleccionar producto</option>
                   {CATALOGO.map((p) => (
@@ -150,13 +150,13 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
                   min="1"
                   value={item.quantity}
                   onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                  className="w-16 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 px-2 py-2 text-center text-sm text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-800 transition"
+                  className="w-16 rounded-lg border border-slate-200 px-2 py-2 text-center text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 />
                 {form.items.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeItemRow(idx)}
-                    className="shrink-0 rounded-lg p-2 text-slate-400 dark:text-slate-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-500 dark:hover:text-rose-400"
+                    className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-500"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -166,13 +166,13 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
           </div>
         </div>
 
-        <div className="flex items-center justify-between rounded-lg bg-slate-50 dark:bg-slate-900 px-4 py-3 ring-1 ring-slate-100 dark:ring-slate-700">
-          <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total estimado</span>
-          <span className="text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(total)}</span>
+        <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+          <span className="text-sm font-medium text-slate-500">Total estimado</span>
+          <span className="text-lg font-bold text-slate-900">{formatCurrency(total)}</span>
         </div>
 
         {error && (
-          <p className="rounded-lg bg-rose-50 dark:bg-rose-950/30 px-3 py-2 text-sm text-rose-600 dark:text-rose-400 ring-1 ring-inset ring-rose-100 dark:ring-rose-900/40">
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 ring-1 ring-inset ring-rose-100">
             {error}
           </p>
         )}
@@ -187,7 +187,7 @@ export default function FormularioPedido({ open, onClose, onAgregar }: Formulari
           <button
             type="button"
             onClick={resetAndClose}
-            className="rounded-lg bg-slate-100 dark:bg-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 transition hover:bg-slate-200 dark:hover:bg-slate-600"
+            className="rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
           >
             Cancelar
           </button>

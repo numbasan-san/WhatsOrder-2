@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
+  // Excluir webhooks y archivos estáticos
   const path = request.nextUrl.pathname;
   
-  // Excluir rutas públicas
   if (
     path.startsWith('/api/webhook') ||
     path.startsWith('/_next') ||

@@ -27,16 +27,16 @@ export default function Modal({ open, onClose, title, maxWidth = 'max-w-lg', chi
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 animate-fade-in bg-slate-900/50 dark:bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 animate-fade-in bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
       <div
-        className={`relative z-10 w-full ${maxWidth} max-h-[90vh] animate-slide-up overflow-y-auto scroll-thin rounded-2xl bg-white dark:bg-slate-800 shadow-2xl ring-1 ring-slate-900/5 dark:ring-slate-700/50`}
+        className={`relative z-10 w-full ${maxWidth} max-h-[90vh] animate-slide-up overflow-y-auto scroll-thin rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/5`}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 dark:border-slate-700 bg-white/95 dark:bg-slate-800/95 px-6 py-4 backdrop-blur">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h2>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-6 py-4 backdrop-blur">
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 dark:text-slate-500 transition hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300"
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
           >
             <X className="h-5 w-5" />
           </button>

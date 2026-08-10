@@ -7,7 +7,7 @@ export const createClient = cache(async () => {
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_SECRET_KEY!,
     {
       cookies: {
         getAll() {
