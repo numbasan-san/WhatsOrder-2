@@ -1,5 +1,5 @@
 import { formatCurrency, formatDateTime } from '@/lib/utils/format';
-import { Pedido } from '@/types';
+import { Pedido } from '@/lib/types';
 
 interface OrderListRowProps {
   pedido: Pedido;
@@ -21,8 +21,8 @@ export default function OrderListRow({ pedido, selected, onClick, rightSlot }: O
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-900">{pedido.customer.name}</p>
-          <p className="truncate text-xs text-slate-400">{pedido.customer.phone}</p>
+          <p className="truncate text-sm font-semibold text-slate-900">{pedido.customer_name || 'Cliente sin nombre'}</p>
+          <p className="truncate text-xs text-slate-400">{pedido.customer_phone || '—'}</p>
         </div>
         <span className="shrink-0 text-sm font-bold text-brand-800">{formatCurrency(pedido.total)}</span>
       </div>

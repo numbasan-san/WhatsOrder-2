@@ -5,7 +5,7 @@ import { CheckCircle2, MapPin, Phone, User, XCircle, Mail, IdCard, StickyNote } 
 import StatusBadge from './StatusBadge';
 import RejectReasonModal from './RejectReasonModal';
 import { formatCurrency, formatLongDate } from '@/lib/utils/format';
-import { Pedido } from '@/types';
+import { Pedido } from '@/lib/types';
 
 function Field({ icon: Icon, label, value }: any) {
   if (!value) return null;
@@ -22,8 +22,8 @@ function Field({ icon: Icon, label, value }: any) {
 
 interface DetallePedidoProps {
   pedido: Pedido;
-  onAprobar?: (id: string) => void;
-  onRechazar?: (id: string, motivo: string) => void;
+  onAprobar?: (id: string) => Promise<void>;
+  onRechazar?: (id: string, motivo: string) => Promise<void>;
 }
 
 export default function DetallePedido({ pedido, onAprobar, onRechazar }: DetallePedidoProps) {
@@ -42,10 +42,10 @@ export default function DetallePedido({ pedido, onAprobar, onRechazar }: Detalle
       <div className="grid gap-6 py-5 sm:grid-cols-2">
         <div className="space-y-3.5">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Cliente</h3>
-          <Field icon={User} label="Nombre" value={pedido.customer.name} />
-          <Field icon={Phone} label="Teléfono" value={pedido.customer.phone} />
-          <Field icon={Mail} label="Email" value={pedido.customer.email} />
-          <Field icon={IdCard} label="Cédula" value={pedido.customer.cedula} />
+          <Field icon={User} label="Nombre" value={pedido.customer_name || 'Cliente sin nombre'} />
+          <Field icon={Phone} label="Teléfono" value={pedido.customer_phone} />
+          <Field icon={Mail} label="Email" value={pedido.customer_email} />
+          <Field icon={IdCard} label="Cédula" value={pedido.customer_cedula} />
 
           {pedido.status === 'rejected' && (
             <div className="mt-2 rounded-lg border border-rose-100 bg-rose-50 p-3">
@@ -53,7 +53,7 @@ export default function DetallePedido({ pedido, onAprobar, onRechazar }: Detalle
                 <XCircle className="h-3.5 w-3.5" /> Razón de rechazo
               </p>
               <p className="mt-1 text-sm text-rose-700">
-                {pedido.rejection_reason || 'Producto sin stock disponible en la sucursal solicitada.'}
+                {pedido.rejection_reason || 'Sin motivo registrado.'}
               </p>
             </div>
           )}
@@ -80,7 +80,7 @@ export default function DetallePedido({ pedido, onAprobar, onRechazar }: Detalle
             <div className="flex gap-3 pt-1">
               <button
                 type="button"
-                onClick={() => onAprobar(pedido.id)}
+                onClick={() => onAprobar(pedido.id).catch(() => {})}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
               >
                 <CheckCircle2 className="h-4 w-4" /> Aprobar
@@ -119,14 +119,14 @@ export default function DetallePedido({ pedido, onAprobar, onRechazar }: Detalle
                 <animate attributeName="opacity" values="0.5;0;0.5" dur="2.4s" repeatCount="indefinite" />
               </circle>
               <text x="200" y="140" fontSize="11" fontWeight="600" fill="#334155" textAnchor="middle">
-                {pedido.delivery?.zone || 'Zona sin asignar'}
+                {pedido.delivery_zone || 'Zona sin asignar'}
               </text>
             </svg>
           </div>
           <div className="space-y-2.5 text-sm">
-            <Field icon={MapPin} label="Dirección" value={pedido.delivery?.address} />
-            <Field icon={StickyNote} label="Referencia / instrucciones" value={pedido.delivery?.instructions} />
-            <Field icon={MapPin} label="Zona" value={pedido.delivery?.zone} />
+            <Field icon={MapPin} label="Dirección" value={pedido.delivery_address} />
+            <Field icon={StickyNote} label="Referencia / instrucciones" value={pedido.delivery_instructions} />
+            <Field icon={MapPin} label="Zona" value={pedido.delivery_zone} />
           </div>
         </div>
       </div>
@@ -134,9 +134,9 @@ export default function DetallePedido({ pedido, onAprobar, onRechazar }: Detalle
       <RejectReasonModal
         open={rejectOpen}
         onClose={() => setRejectOpen(false)}
-        customerName={pedido.customer.name}
+        customerName={pedido.customer_name || 'Cliente sin nombre'}
         onConfirm={(motivo) => {
-          onRechazar?.(pedido.id, motivo);
+          onRechazar?.(pedido.id, motivo).catch(() => {});
           setRejectOpen(false);
         }}
       />

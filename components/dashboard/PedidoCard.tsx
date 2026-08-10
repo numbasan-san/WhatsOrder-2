@@ -5,12 +5,12 @@ import { CheckCircle2, Phone, XCircle } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import RejectReasonModal from './RejectReasonModal';
 import { formatCurrency, formatDateTime } from '@/lib/utils/format';
-import { Pedido } from '@/types';
+import { Pedido } from '@/lib/types';
 
 interface PedidoCardProps {
   pedido: Pedido;
-  onAprobar?: (id: string) => void;
-  onRechazar?: (id: string, motivo: string) => void;
+  onAprobar?: (id: string) => Promise<void>;
+  onRechazar?: (id: string, motivo: string) => Promise<void>;
 }
 
 export default function PedidoCard({ pedido, onAprobar, onRechazar }: PedidoCardProps) {
@@ -21,9 +21,9 @@ export default function PedidoCard({ pedido, onAprobar, onRechazar }: PedidoCard
     <div className="rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card-hover">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-900">{pedido.customer.name}</p>
+          <p className="truncate text-sm font-semibold text-slate-900">{pedido.customer_name || 'Cliente sin nombre'}</p>
           <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
-            <Phone className="h-3 w-3" /> {pedido.customer.phone}
+            <Phone className="h-3 w-3" /> {pedido.customer_phone || '—'}
           </p>
         </div>
         <StatusBadge status={pedido.status} size="sm" />
@@ -67,9 +67,9 @@ export default function PedidoCard({ pedido, onAprobar, onRechazar }: PedidoCard
       <RejectReasonModal
         open={rejectOpen}
         onClose={() => setRejectOpen(false)}
-        customerName={pedido.customer.name}
+        customerName={pedido.customer_name || 'Cliente sin nombre'}
         onConfirm={(motivo) => {
-          onRechazar?.(pedido.id, motivo);
+          onRechazar?.(pedido.id, motivo).catch(() => {});
           setRejectOpen(false);
         }}
       />

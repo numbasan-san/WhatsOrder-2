@@ -1,6 +1,12 @@
-import { CheckCircle2, Clock, XCircle, LucideIcon } from 'lucide-react';
+import { CheckCircle2, Clock, XCircle, Ban, LucideIcon } from 'lucide-react';
+import type { OrderStatus } from '@/lib/types';
 
-const CONFIG: Record<string, { label: string; className: string; Icon: LucideIcon }> = {
+const CONFIG: Record<OrderStatus, { label: string; className: string; Icon: LucideIcon }> = {
+  pending_confirmation: {
+    label: 'Por confirmar',
+    className: 'bg-sky-50 text-sky-700 ring-sky-600/20',
+    Icon: Clock,
+  },
   pending: {
     label: 'Pendiente',
     className: 'bg-amber-50 text-amber-700 ring-amber-600/20',
@@ -16,10 +22,15 @@ const CONFIG: Record<string, { label: string; className: string; Icon: LucideIco
     className: 'bg-rose-50 text-rose-700 ring-rose-600/20',
     Icon: XCircle,
   },
+  cancelled: {
+    label: 'Cancelado',
+    className: 'bg-slate-100 text-slate-500 ring-slate-300/40',
+    Icon: Ban,
+  },
 };
 
 interface StatusBadgeProps {
-  status: 'pending' | 'approved' | 'rejected';
+  status: OrderStatus;
   size?: 'sm' | 'md';
 }
 
