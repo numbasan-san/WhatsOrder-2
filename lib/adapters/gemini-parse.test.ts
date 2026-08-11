@@ -34,4 +34,16 @@ describe('parseGeminiOrder', () => {
   it('returns empty items on garbage', () => {
     expect(parseGeminiOrder('not json').items).toEqual([])
   })
+  it('recovers quantity from message when model omits it', () => {
+    const r = parseGeminiOrder('{"items":[{"name":"salami"}]}', 'quiero tres salami')
+    expect(r.items[0].quantity).toBe(3)
+  })
+  it('recovers digit quantity from message', () => {
+    const r = parseGeminiOrder('{"items":[{"name":"pan"}]}', 'dame 4 pan')
+    expect(r.items[0].quantity).toBe(4)
+  })
+  it('defaults to 1 when nothing found', () => {
+    const r = parseGeminiOrder('{"items":[{"name":"pan"}]}', 'pan')
+    expect(r.items[0].quantity).toBe(1)
+  })
 })
