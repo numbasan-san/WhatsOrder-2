@@ -19,6 +19,8 @@ const NO_ITEMS_MESSAGE =
   'No pude identificar productos en tu mensaje. Por favor, intenta de nuevo con un formato claro.\n\n' +
   'Ejemplo: "Quiero 2 litros de leche, 1 pan y 3 manzanas"'
 
+const NEED_NAME_MESSAGE = '👤 ¿A nombre de quién registramos el pedido?'
+
 const NEED_ADDRESS_MESSAGE = '📍 ¿A qué dirección lo enviamos?'
 
 const SUPPORT_MESSAGE =
@@ -41,6 +43,11 @@ function unmatchedSuffix(unmatched?: string[], suggestions?: Record<string, stri
 async function sendDraftResult(telegram: TelegramAdapter, chatId: string, res: DraftResult): Promise<void> {
   if (res.status === 'no_items') {
     await telegram.sendSimpleMessage(chatId, NO_ITEMS_MESSAGE + unmatchedSuffix(res.unmatched, res.suggestions))
+    return
+  }
+
+  if (res.status === 'need_name') {
+    await telegram.sendSimpleMessage(chatId, NEED_NAME_MESSAGE + unmatchedSuffix(res.unmatched, res.suggestions))
     return
   }
 
@@ -102,9 +109,11 @@ export async function POST(req: NextRequest) {
       try {
         const conv = await getConversation(supabase, chatId)
         const res =
-          conv?.state === 'awaiting_address'
-            ? await orderService.completeDraftWithAddress(chatId, text)
-            : await orderService.createDraftFromMessage(chatId, text)
+          conv?.state === 'awaiting_name'
+            ? await orderService.completeDraftWithName(chatId, text)
+            : conv?.state === 'awaiting_address'
+              ? await orderService.completeDraftWithAddress(chatId, text)
+              : await orderService.createDraftFromMessage(chatId, text)
 
         await sendDraftResult(telegram, chatId, res)
         return NextResponse.json({ status: 'processed', result: res.status })
