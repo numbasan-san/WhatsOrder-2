@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { ShieldCheck, FilePlus2, CheckCircle2, XCircle, ListFilter } from 'lucide-react';
 import { usePedidos } from '@/context/PedidosContext';
 import { PedidosProvider } from '@/context/PedidosContext';
@@ -9,6 +9,7 @@ import StatCard from '@/components/dashboard/StatCard';
 import EmptyState from '@/components/dashboard/EmptyState';
 import { seededInt, seededPick } from '@/lib/utils/seededRandom';
 import { AGENTES_CSR } from '@/lib/utils/constants';
+import { createClient } from '@/lib/supabase/client';
 
 const FILTERS = [
   { key: 'all', label: 'Todos' },
@@ -32,6 +33,68 @@ const TYPE_LABEL: Record<string, string> = {
 function MonitoreoContent() {
   const { pedidos } = usePedidos();
   const [filterType, setFilterType] = useState('all');
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
+  const supabase = createClient();
+
+  // Cargar nombres de usuarios para los IDs que aparecen en los pedidos
+  useEffect(() => {
+    const loadUserNames = async () => {
+      const userIds = new Set<string>();
+      
+      // Recolectar todos los IDs de usuarios de approved_by y rejected_by
+      pedidos.forEach(p => {
+        if (p.approved_by && p.approved_by.length > 10) userIds.add(p.approved_by);
+        if (p.rejected_by && p.rejected_by.length > 10) userIds.add(p.rejected_by);
+      });
+
+      // Si no hay IDs, no hacer nada
+      if (userIds.size === 0) return;
+
+      console.log('🔍 Cargando nombres para usuarios:', Array.from(userIds));
+
+      // Cargar nombres de usuarios desde la base de datos
+      for (const userId of userIds) {
+        try {
+          // Primero verificar si está en el caché local
+          if (userNames[userId]) continue;
+
+          const { data, error } = await supabase
+            .from('user_profiles')
+            .select('id, full_name')
+            .eq('id', userId)
+            .single();
+
+          if (error) {
+            console.warn(`⚠️ No se encontró perfil para usuario ${userId}:`, error);
+            setUserNames(prev => ({ ...prev, [userId]: `Usuario ${userId.slice(0, 8)}` }));
+          } else if (data) {
+            console.log(`✅ Usuario ${userId} → ${data.full_name}`);
+            setUserNames(prev => ({ ...prev, [userId]: data.full_name || `Usuario ${userId.slice(0, 8)}` }));
+          }
+        } catch (error) {
+          console.warn(`⚠️ Error cargando usuario ${userId}:`, error);
+          setUserNames(prev => ({ ...prev, [userId]: `Usuario ${userId.slice(0, 8)}` }));
+        }
+      }
+    };
+
+    if (pedidos.length > 0) {
+      loadUserNames();
+    }
+  }, [pedidos, supabase]);
+
+  // Función para obtener el nombre del usuario
+  const getUserDisplayName = (userId: string | null): string => {
+    if (!userId) return 'CSR-Admin';
+    
+    // Si es un UUID (tiene 36 caracteres con guiones)
+    if (userId.length > 30 && userId.includes('-')) {
+      return userNames[userId] || `Usuario ${userId.slice(0, 8)}`;
+    }
+    
+    // Si ya es un nombre legible, devolverlo
+    return userId;
+  };
 
   const logs = useMemo(() => {
     const entries = pedidos.flatMap((p) => {
@@ -41,7 +104,7 @@ function MonitoreoContent() {
         customer: p.customer.name,
         action: 'Pedido creado',
         user: 'CSR-Admin',
-        type: 'creacion',
+        type: 'creacion' as const,
         timestamp: p.created_at,
         ip: `192.168.${seededInt(`${p.id}-ip1`, 0, 255)}.${seededInt(`${p.id}-ip2`, 0, 255)}`,
       };
@@ -49,24 +112,26 @@ function MonitoreoContent() {
       const entries2 = [created];
 
       if (p.status === 'approved') {
+        const approverName = getUserDisplayName(p.approved_by);
         entries2.push({
           id: `${p.id}-aprobacion`,
           orderId: p.id,
           customer: p.customer.name,
           action: 'Pedido aprobado',
-          user: p.approved_by || seededPick(`${p.id}-user`, AGENTES_CSR),
-          type: 'aprobacion',
+          user: approverName,
+          type: 'aprobacion' as const,
           timestamp: p.approved_at || p.created_at,
           ip: `192.168.${seededInt(`${p.id}-ip3`, 0, 255)}.${seededInt(`${p.id}-ip4`, 0, 255)}`,
         });
       } else if (p.status === 'rejected') {
+        const rejecterName = getUserDisplayName(p.rejected_by);
         entries2.push({
           id: `${p.id}-rechazo`,
           orderId: p.id,
           customer: p.customer.name,
           action: 'Pedido rechazado',
-          user: p.rejected_by || seededPick(`${p.id}-user`, AGENTES_CSR),
-          type: 'rechazo',
+          user: rejecterName,
+          type: 'rechazo' as const,
           timestamp: p.rejected_at || p.created_at,
           ip: `192.168.${seededInt(`${p.id}-ip3`, 0, 255)}.${seededInt(`${p.id}-ip4`, 0, 255)}`,
         });
@@ -77,7 +142,7 @@ function MonitoreoContent() {
           customer: p.customer.name,
           action: 'Pendiente de acción',
           user: seededPick(`${p.id}-user`, AGENTES_CSR),
-          type: 'creacion',
+          type: 'creacion' as const,
           timestamp: p.created_at,
           ip: `192.168.${seededInt(`${p.id}-ip3`, 0, 255)}.${seededInt(`${p.id}-ip4`, 0, 255)}`,
         });
@@ -87,7 +152,7 @@ function MonitoreoContent() {
     });
 
     return entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [pedidos]);
+  }, [pedidos, userNames]);
 
   const filteredLogs = filterType === 'all' ? logs : logs.filter((l) => l.type === filterType);
 
@@ -145,7 +210,9 @@ function MonitoreoContent() {
                   <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">#{log.orderId}</td>
                   <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">{log.customer}</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{log.action}</td>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{log.user}</td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                    {log.user}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TYPE_STYLES[log.type]}`}>
                       {TYPE_LABEL[log.type]}
