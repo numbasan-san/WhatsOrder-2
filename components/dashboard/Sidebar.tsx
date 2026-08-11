@@ -11,8 +11,11 @@ import {
   ShieldCheck,
   MessageCircle,
   LogOut,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { logout } from '@/app/auth/actions';
+import { useTheme } from '@/components/ThemeProvider';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -31,6 +34,7 @@ interface SidebarProps {
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <>
@@ -86,6 +90,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               <p className="truncate text-sm font-medium text-slate-100">CSR Admin</p>
               <p className="truncate text-xs text-slate-500">Supervisor</p>
             </div>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-100"
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
             <form action={logout}>
               <button
                 type="submit"

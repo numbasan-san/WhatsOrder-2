@@ -1,6 +1,7 @@
 'use client';
 
 import { PedidosProvider } from '@/context/PedidosContext';
+import { ThemeProvider } from '@/components/ThemeProvider';
 import Sidebar from '@/components/dashboard/Sidebar';
 import { useState } from 'react';
 
@@ -12,6 +13,7 @@ export default function DashboardShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
+    <ThemeProvider>
     <PedidosProvider>
       <div className="flex min-h-screen bg-slate-50">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -37,5 +39,6 @@ export default function DashboardShell({
         </div>
       </div>
     </PedidosProvider>
+    </ThemeProvider>
   );
 }
