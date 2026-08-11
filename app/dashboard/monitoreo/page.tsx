@@ -11,6 +11,8 @@ import { seededInt, seededPick } from '@/lib/utils/seededRandom';
 import { AGENTES_CSR } from '@/lib/utils/constants';
 import { createClient } from '@/lib/supabase/client';
 
+type LogType = 'creacion' | 'aprobacion' | 'rechazo';
+
 const FILTERS = [
   { key: 'all', label: 'Todos' },
   { key: 'creacion', label: 'Creaciones' },
@@ -18,13 +20,14 @@ const FILTERS = [
   { key: 'rechazo', label: 'Rechazos' },
 ];
 
-const TYPE_STYLES: Record<string, string> = {
+const TYPE_STYLES: Record<LogType | 'all', string> = {
   creacion: 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/30 dark:text-sky-400 dark:ring-sky-500/20',
   aprobacion: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20',
   rechazo: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/30 dark:text-rose-400 dark:ring-rose-500/20',
+  all: '',
 };
 
-const TYPE_LABEL: Record<string, string> = {
+const TYPE_LABEL: Record<LogType, string> = {
   creacion: 'Creación',
   aprobacion: 'Aprobación',
   rechazo: 'Rechazo',
@@ -32,30 +35,24 @@ const TYPE_LABEL: Record<string, string> = {
 
 function MonitoreoContent() {
   const { pedidos } = usePedidos();
-  const [filterType, setFilterType] = useState('all');
+  const [filterType, setFilterType] = useState<LogType | 'all'>('all');
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const supabase = createClient();
 
-  // Cargar nombres de usuarios para los IDs que aparecen en los pedidos
+  // Cargar nombres de usuarios
   useEffect(() => {
     const loadUserNames = async () => {
       const userIds = new Set<string>();
       
-      // Recolectar todos los IDs de usuarios de approved_by y rejected_by
       pedidos.forEach(p => {
         if (p.approved_by && p.approved_by.length > 10) userIds.add(p.approved_by);
         if (p.rejected_by && p.rejected_by.length > 10) userIds.add(p.rejected_by);
       });
 
-      // Si no hay IDs, no hacer nada
       if (userIds.size === 0) return;
 
-      console.log('🔍 Cargando nombres para usuarios:', Array.from(userIds));
-
-      // Cargar nombres de usuarios desde la base de datos
       for (const userId of userIds) {
         try {
-          // Primero verificar si está en el caché local
           if (userNames[userId]) continue;
 
           const { data, error } = await supabase
@@ -65,14 +62,11 @@ function MonitoreoContent() {
             .single();
 
           if (error) {
-            console.warn(`⚠️ No se encontró perfil para usuario ${userId}:`, error);
             setUserNames(prev => ({ ...prev, [userId]: `Usuario ${userId.slice(0, 8)}` }));
           } else if (data) {
-            console.log(`✅ Usuario ${userId} → ${data.full_name}`);
             setUserNames(prev => ({ ...prev, [userId]: data.full_name || `Usuario ${userId.slice(0, 8)}` }));
           }
         } catch (error) {
-          console.warn(`⚠️ Error cargando usuario ${userId}:`, error);
           setUserNames(prev => ({ ...prev, [userId]: `Usuario ${userId.slice(0, 8)}` }));
         }
       }
@@ -83,16 +77,11 @@ function MonitoreoContent() {
     }
   }, [pedidos, supabase]);
 
-  // Función para obtener el nombre del usuario
   const getUserDisplayName = (userId: string | null): string => {
     if (!userId) return 'CSR-Admin';
-    
-    // Si es un UUID (tiene 36 caracteres con guiones)
     if (userId.length > 30 && userId.includes('-')) {
       return userNames[userId] || `Usuario ${userId.slice(0, 8)}`;
     }
-    
-    // Si ya es un nombre legible, devolverlo
     return userId;
   };
 
@@ -104,7 +93,7 @@ function MonitoreoContent() {
         customer: p.customer.name,
         action: 'Pedido creado',
         user: 'CSR-Admin',
-        type: 'creacion' as const,
+        type: 'creacion' as LogType,
         timestamp: p.created_at,
         ip: `192.168.${seededInt(`${p.id}-ip1`, 0, 255)}.${seededInt(`${p.id}-ip2`, 0, 255)}`,
       };
@@ -119,7 +108,7 @@ function MonitoreoContent() {
           customer: p.customer.name,
           action: 'Pedido aprobado',
           user: approverName,
-          type: 'aprobacion' as const,
+          type: 'aprobacion' as LogType,
           timestamp: p.approved_at || p.created_at,
           ip: `192.168.${seededInt(`${p.id}-ip3`, 0, 255)}.${seededInt(`${p.id}-ip4`, 0, 255)}`,
         });
@@ -131,7 +120,7 @@ function MonitoreoContent() {
           customer: p.customer.name,
           action: 'Pedido rechazado',
           user: rejecterName,
-          type: 'rechazo' as const,
+          type: 'rechazo' as LogType,
           timestamp: p.rejected_at || p.created_at,
           ip: `192.168.${seededInt(`${p.id}-ip3`, 0, 255)}.${seededInt(`${p.id}-ip4`, 0, 255)}`,
         });
@@ -142,7 +131,7 @@ function MonitoreoContent() {
           customer: p.customer.name,
           action: 'Pendiente de acción',
           user: seededPick(`${p.id}-user`, AGENTES_CSR),
-          type: 'creacion' as const,
+          type: 'creacion' as LogType,
           timestamp: p.created_at,
           ip: `192.168.${seededInt(`${p.id}-ip3`, 0, 255)}.${seededInt(`${p.id}-ip4`, 0, 255)}`,
         });
@@ -154,7 +143,9 @@ function MonitoreoContent() {
     return entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [pedidos, userNames]);
 
-  const filteredLogs = filterType === 'all' ? logs : logs.filter((l) => l.type === filterType);
+  const filteredLogs = filterType === 'all' 
+    ? logs 
+    : logs.filter((l) => l.type === filterType);
 
   const stats = {
     total: logs.length,
@@ -180,7 +171,7 @@ function MonitoreoContent() {
           <button
             key={f.key}
             type="button"
-            onClick={() => setFilterType(f.key)}
+            onClick={() => setFilterType(f.key as LogType | 'all')}
             className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
               filterType === f.key ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
             }`}
@@ -210,9 +201,7 @@ function MonitoreoContent() {
                   <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">#{log.orderId}</td>
                   <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">{log.customer}</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{log.action}</td>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
-                    {log.user}
-                  </td>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{log.user}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TYPE_STYLES[log.type]}`}>
                       {TYPE_LABEL[log.type]}
