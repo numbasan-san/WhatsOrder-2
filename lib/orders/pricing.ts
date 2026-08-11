@@ -4,6 +4,23 @@ export function normalizeName(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim()
 }
 
+function tokenize(s: string): string[] {
+  return normalizeName(s).split(' ').filter((w) => w.length > 1)
+}
+
+/** Token-overlap similarity between a query and a target name. Higher = closer. */
+export function matchScore(query: string, target: string): number {
+  const q = tokenize(query)
+  const t = tokenize(target)
+  let score = 0
+  for (const a of q) for (const b of t) {
+    if (a === b) score += 3
+    else if (b.includes(a) || a.includes(b)) score += 2
+    else if (b.startsWith(a) || a.startsWith(b)) score += 1
+  }
+  return score
+}
+
 export function matchItemsToCatalog(
   requested: { name: string; quantity: number }[],
   catalog: Producto[],

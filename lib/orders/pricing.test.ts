@@ -1,11 +1,21 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeName, matchItemsToCatalog, orderTotal, buildOrderSummary } from './pricing'
+import { normalizeName, matchScore, matchItemsToCatalog, orderTotal, buildOrderSummary } from './pricing'
 import type { Producto } from '@/lib/types'
 
 const catalog: Producto[] = [
   { id: '1', sku: 'leche-1l', name: 'Leche entera 1L', price: 65, stock: 10, active: true },
   { id: '2', sku: 'pan-molde', name: 'Pan de molde', price: 95, stock: 10, active: true },
 ]
+
+describe('matchScore', () => {
+  it('scores more matching tokens higher', () => {
+    expect(matchScore('leche', 'Leche entera 1L')).toBeGreaterThan(0)
+    expect(matchScore('leche entera', 'Leche entera 1L')).toBeGreaterThan(matchScore('leche', 'Leche entera 1L'))
+  })
+  it('scores unrelated as zero', () => {
+    expect(matchScore('dragon', 'Leche entera 1L')).toBe(0)
+  })
+})
 
 describe('normalizeName', () => {
   it('lowercases, strips accents and spaces', () => {
