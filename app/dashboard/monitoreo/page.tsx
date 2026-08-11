@@ -129,7 +129,7 @@ function MonitoreoContent() {
             type="button"
             onClick={() => setFilterAction(f.key)}
             className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-              filterAction === f.key ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50'
+              filterAction === f.key ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900' : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700 dark:hover:bg-slate-700'
             }`}
           >
             {f.label}
@@ -137,10 +137,10 @@ function MonitoreoContent() {
         ))}
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-100">
+      <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
         <div className="max-h-[600px] overflow-auto scroll-thin">
           <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+            <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-400 dark:bg-slate-700/50 dark:text-slate-400">
               <tr>
                 <th className="px-4 py-3 font-medium">Pedido</th>
                 <th className="px-4 py-3 font-medium">Cliente</th>
@@ -152,11 +152,11 @@ function MonitoreoContent() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filteredLogs.map((log) => (
-                <tr key={log.id} className="transition hover:bg-slate-50">
+                <tr key={log.id} className="transition hover:bg-slate-50 dark:hover:bg-slate-700/50">
                   <td className="px-4 py-3 font-medium text-slate-500">
                     {log.pedido_id ? `#${log.pedido_id.slice(0, 8)}` : '—'}
                   </td>
-                  <td className="px-4 py-3 font-medium text-slate-800">
+                  <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">
                     {log.pedido_id ? pedidoNameById[log.pedido_id] || '—' : '—'}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{ACTION_LABEL[log.action] || log.action}</td>

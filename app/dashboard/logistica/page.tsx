@@ -107,7 +107,7 @@ function LogisticaContent() {
             type="button"
             onClick={() => setFilter(f.key)}
             className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-              filter === f.key ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50'
+              filter === f.key ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900' : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700 dark:hover:bg-slate-700'
             }`}
           >
             {f.label}
@@ -116,10 +116,10 @@ function LogisticaContent() {
       </div>
 
       <div className="mt-4 grid gap-5 lg:grid-cols-[1.4fr,1fr]">
-        <div className="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-100">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
           <div className="max-h-[560px] overflow-auto scroll-thin">
             <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+              <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-400 dark:bg-slate-700/50 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3 font-medium">Cliente</th>
                   <th className="px-4 py-3 font-medium">Zona</th>
@@ -135,9 +135,9 @@ function LogisticaContent() {
                     <tr
                       key={p.id}
                       onClick={() => selectPedido(p)}
-                      className={`cursor-pointer transition ${selectedId === p.id ? 'bg-brand-50/60' : 'hover:bg-slate-50'}`}
+                      className={`cursor-pointer transition ${selectedId === p.id ? 'bg-brand-50/60 dark:bg-brand-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
                     >
-                      <td className="px-4 py-3 font-medium text-slate-800">{p.customer_name || 'Cliente sin nombre'}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{p.customer_name || 'Cliente sin nombre'}</td>
                       <td className="px-4 py-3 text-slate-500">{p.delivery_zone || 'Sin zona'}</td>
                       <td className="px-4 py-3 text-slate-500">{p.delivery_assigned_to || 'Sin asignar'}</td>
                       <td className="px-4 py-3">
@@ -159,14 +159,14 @@ function LogisticaContent() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100">
-          <h3 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
+          <h3 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">
             <MapPin className="h-4 w-4 text-brand-600" /> Asignar Entrega
           </h3>
           {selected ? (
             <div className="animate-fade-in space-y-4">
-              <div className="rounded-lg bg-slate-50 p-3 text-sm">
-                <p className="font-semibold text-slate-800">{selected.customer_name || 'Cliente sin nombre'}</p>
+              <div className="rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-700/40">
+                <p className="font-semibold text-slate-800 dark:text-slate-100">{selected.customer_name || 'Cliente sin nombre'}</p>
                 <p className="text-xs text-slate-500">{selected.delivery_address || 'Sin dirección registrada'}</p>
                 <p className="text-xs text-slate-400">{selected.delivery_zone || 'Zona sin asignar'}</p>
               </div>
@@ -178,7 +178,7 @@ function LogisticaContent() {
                   value={draft.assigned_to}
                   onChange={(e) => setDraft({ ...draft, assigned_to: e.target.value })}
                   placeholder="Nombre del repartidor"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                 />
               </div>
 
@@ -187,7 +187,7 @@ function LogisticaContent() {
                 <select
                   value={draft.delivery_status}
                   onChange={(e) => setDraft({ ...draft, delivery_status: e.target.value as NonNullable<DeliveryStatus> })}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                 >
                   {(Object.keys(STATUS_LABEL) as NonNullable<DeliveryStatus>[]).map((s) => (
                     <option key={s} value={s}>
@@ -204,7 +204,7 @@ function LogisticaContent() {
                   value={draft.delivery_eta}
                   onChange={(e) => setDraft({ ...draft, delivery_eta: e.target.value })}
                   placeholder="Ej. 30 min"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                 />
               </div>
 
