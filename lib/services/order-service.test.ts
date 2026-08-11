@@ -333,6 +333,36 @@ describe('OrderService.createDraftFromMessage — name step', () => {
   })
 })
 
+const DRAFT_ITEMS = [{ sku: 'leche-1l', product: 'Leche entera 1L', quantity: 2, price: 65, subtotal: 130 }]
+
+describe('OrderService.completeDraftWithName', () => {
+  it('with a stored address, inserts the pedido and clears the conversation', async () => {
+    const conv = { state: 'awaiting_name', draft: { items: DRAFT_ITEMS, unmatched: [], customerName: null, deliveryAddress: 'Calle 5' } }
+    const { client, convDeletes, pedidoInserts } = fakeSupabaseForDraft(CATALOG, conv, { data: { id: 'd1' }, error: null })
+    const service = new OrderService(client)
+
+    const res = await service.completeDraftWithName('111', 'María')
+
+    expect(res.status).toBe('created')
+    expect(res.pedidoId).toBe('d1')
+    expect(pedidoInserts[0]).toMatchObject({ customer_name: 'María', delivery_address: 'Calle 5' })
+    expect(convDeletes).toContain('111')
+  })
+
+  it('without a stored address, parks awaiting_address carrying the name', async () => {
+    const conv = { state: 'awaiting_name', draft: { items: DRAFT_ITEMS, unmatched: [], customerName: null, deliveryAddress: null } }
+    const { client, convUpserts, pedidoInserts } = fakeSupabaseForDraft(CATALOG, conv, { data: null, error: null })
+    const service = new OrderService(client)
+
+    const res = await service.completeDraftWithName('111', 'María')
+
+    expect(res.status).toBe('need_address')
+    expect(pedidoInserts).toHaveLength(0)
+    expect(convUpserts[0]).toMatchObject({ chat_id: '111', state: 'awaiting_address' })
+    expect(convUpserts[0].draft).toMatchObject({ customerName: 'María' })
+  })
+})
+
 describe('OrderService.createManualOrder', () => {
   it('prices items from the catalog by sku, inserts a pending/manual pedido, writes a created audit row', async () => {
     const insertedRow = {

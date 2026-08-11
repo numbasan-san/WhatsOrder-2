@@ -146,6 +146,35 @@ export class OrderService {
     }
   }
 
+  /** Resume a conversation parked in 'awaiting_name' once the customer replies with their name. */
+  async completeDraftWithName(chatId: string, name: string): Promise<DraftResult> {
+    const conv = await getConversation(this.supabase, chatId)
+    const draft = conv?.draft as OrderDraft | undefined
+    if (!conv || conv.state !== 'awaiting_name' || !draft?.items?.length) {
+      return { status: 'no_items' }
+    }
+    const customerName = name.trim() || null
+
+    if (draft.deliveryAddress) {
+      const pedidoId = await this.insertDraft(chatId, draft.items, customerName, draft.deliveryAddress)
+      await clearConversation(this.supabase, chatId)
+      return {
+        status: 'created',
+        pedidoId,
+        summary: buildOrderSummary(draft.items, orderTotal(draft.items), draft.deliveryAddress),
+        unmatched: draft.unmatched ?? [],
+      }
+    }
+
+    await setConversation(this.supabase, chatId, 'awaiting_address', {
+      items: draft.items,
+      unmatched: draft.unmatched ?? [],
+      customerName,
+      deliveryAddress: null,
+    } satisfies OrderDraft)
+    return { status: 'need_address', unmatched: draft.unmatched ?? [] }
+  }
+
   private async insertDraft(
     chatId: string,
     items: OrderItem[],
