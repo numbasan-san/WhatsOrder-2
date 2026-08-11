@@ -18,31 +18,31 @@ export default function PedidoCard({ pedido, onAprobar, onRechazar }: PedidoCard
   const canAct = pedido.status === 'pending' && onAprobar && onRechazar;
 
   return (
-    <div className="rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card-hover">
+    <div className="rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card-hover dark:border-slate-700 dark:bg-slate-800 dark:shadow-card-dark dark:hover:shadow-card-hover-dark">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-900">{pedido.customer_name || 'Cliente sin nombre'}</p>
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
+          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{pedido.customer_name || 'Cliente sin nombre'}</p>
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
             <Phone className="h-3 w-3" /> {pedido.customer_phone || '—'}
           </p>
         </div>
         <StatusBadge status={pedido.status} size="sm" />
       </div>
 
-      <div className="mt-2.5 space-y-0.5 border-t border-slate-50 pt-2.5">
+      <div className="mt-2.5 space-y-0.5 border-t border-slate-50 pt-2.5 dark:border-slate-700">
         {pedido.items.slice(0, 2).map((item, idx) => (
-          <p key={idx} className="truncate text-xs text-slate-500">
-            <span className="font-medium text-slate-600">{item.quantity}×</span> {item.product}
+          <p key={idx} className="truncate text-xs text-slate-500 dark:text-slate-400">
+            <span className="font-medium text-slate-600 dark:text-slate-300">{item.quantity}×</span> {item.product}
           </p>
         ))}
         {pedido.items.length > 2 && (
-          <p className="text-xs text-slate-400">+{pedido.items.length - 2} más</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">+{pedido.items.length - 2} más</p>
         )}
       </div>
 
-      <div className="mt-2.5 flex items-center justify-between border-t border-slate-50 pt-2.5">
-        <span className="text-sm font-bold text-brand-800">{formatCurrency(pedido.total)}</span>
-        <span className="text-[11px] text-slate-400">{formatDateTime(pedido.created_at)}</span>
+      <div className="mt-2.5 flex items-center justify-between border-t border-slate-50 pt-2.5 dark:border-slate-700">
+        <span className="text-sm font-bold text-brand-800 dark:text-brand-300">{formatCurrency(pedido.total)}</span>
+        <span className="text-[11px] text-slate-400 dark:text-slate-500">{formatDateTime(pedido.created_at)}</span>
       </div>
 
       {/*canAct && (

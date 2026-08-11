@@ -17,13 +17,13 @@ interface StatCardProps {
 
 export default function StatCard({ icon: Icon, label, value, tone = 'slate' }: StatCardProps) {
   return (
-    <div className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-card ring-1 ring-slate-100 transition hover:shadow-card-hover">
+    <div className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-card ring-1 ring-slate-100 transition hover:shadow-card-hover dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700 dark:hover:shadow-card-hover-dark">
       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${TONES[tone]}`}>
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0">
-        <p className="truncate text-xs font-medium text-slate-500">{label}</p>
-        <p className="whitespace-nowrap text-lg font-bold leading-tight text-slate-900 xl:text-xl">{value}</p>
+        <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="whitespace-nowrap text-lg font-bold leading-tight text-slate-900 dark:text-slate-100 xl:text-xl">{value}</p>
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ function Field({ icon: Icon, label, value }: any) {
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
       <div className="min-w-0">
         <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
-        <p className="truncate text-sm font-medium text-slate-700">{value}</p>
+        <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{value}</p>
       </div>
     </div>
   );
@@ -30,11 +30,11 @@ export default function DetallePedido({ pedido, onAprobar, onRechazar }: Detalle
   const [rejectOpen, setRejectOpen] = useState(false);
 
   return (
-    <div className="animate-fade-in rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+    <div className="animate-fade-in rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">Pedido #{pedido.id}</h2>
-          <p className="text-xs text-slate-400">{formatLongDate(pedido.created_at)}</p>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Pedido #{pedido.id}</h2>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{formatLongDate(pedido.created_at)}</p>
         </div>
         <StatusBadge status={pedido.status} />
       </div>
@@ -61,13 +61,13 @@ export default function DetallePedido({ pedido, onAprobar, onRechazar }: Detalle
 
         <div className="space-y-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Productos</h3>
-          <div className="divide-y divide-slate-50 rounded-lg border border-slate-100">
+          <div className="divide-y divide-slate-50 rounded-lg border border-slate-100 dark:divide-slate-700 dark:border-slate-700">
             {pedido.items.map((item, idx) => (
               <div key={idx} className="flex items-center justify-between px-3 py-2 text-sm">
-                <span className="text-slate-600">
-                  <span className="font-semibold text-slate-800">{item.quantity}×</span> {item.product}
+                <span className="text-slate-600 dark:text-slate-300">
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">{item.quantity}×</span> {item.product}
                 </span>
-                <span className="font-medium text-slate-700">{formatCurrency(item.subtotal || 0)}</span>
+                <span className="font-medium text-slate-700 dark:text-slate-200">{formatCurrency(item.subtotal || 0)}</span>
               </div>
             ))}
           </div>
