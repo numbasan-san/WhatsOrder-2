@@ -7,57 +7,97 @@ import { PedidosProvider } from '@/context/PedidosContext';
 import PageHeader from '@/components/dashboard/PageHeader';
 import StatCard from '@/components/dashboard/StatCard';
 import EmptyState from '@/components/dashboard/EmptyState';
+import type { DeliveryStatus, Pedido } from '@/lib/types';
 
-const FILTERS = [
+const FILTERS: { key: 'all' | NonNullable<DeliveryStatus>; label: string }[] = [
   { key: 'all', label: 'Todos' },
-  { key: 'En ruta', label: 'En Ruta' },
-  { key: 'Entregado', label: 'Entregados' },
-  { key: 'Pendiente de entrega', label: 'Pendientes' },
+  { key: 'pending', label: 'Pendientes' },
+  { key: 'assigned', label: 'Asignados' },
+  { key: 'in_transit', label: 'En Tránsito' },
+  { key: 'delivered', label: 'Entregados' },
 ];
 
-const STATUS_STYLES: Record<string, string> = {
-  Entregado: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20',
-  'En ruta': 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-500/20',
-  'Pendiente de entrega': 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/30 dark:text-sky-400 dark:ring-sky-500/20',
-  'No asignado': 'bg-slate-100 text-slate-500 ring-slate-300/40 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-600/40',
+const STATUS_LABEL: Record<NonNullable<DeliveryStatus>, string> = {
+  pending: 'Pendiente',
+  assigned: 'Asignado',
+  in_transit: 'En tránsito',
+  delivered: 'Entregado',
+};
+
+const STATUS_STYLES: Record<NonNullable<DeliveryStatus>, string> = {
+  pending: 'bg-sky-50 text-sky-700 ring-sky-600/20',
+  assigned: 'bg-amber-50 text-amber-700 ring-amber-600/20',
+  in_transit: 'bg-brand-50 text-brand-700 ring-brand-600/20',
+  delivered: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
 };
 
 function LogisticaContent() {
-  const { pedidos } = usePedidos();
-  const [filter, setFilter] = useState('all');
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { pedidos, error, asignarEntrega } = usePedidos();
+  const [filter, setFilter] = useState<'all' | NonNullable<DeliveryStatus>>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ assigned_to: string; delivery_status: NonNullable<DeliveryStatus>; delivery_eta: string }>({
+    assigned_to: '',
+    delivery_status: 'pending',
+    delivery_eta: '',
+  });
+  const [saving, setSaving] = useState(false);
 
-  const entregas = useMemo(
-    () =>
-      pedidos.map((p) => ({
-        ...p,
-        deliveryStatus: p.delivery_status || (p.status === 'approved' ? 'Pendiente de entrega' : 'No asignado'),
-        deliveryZone: p.delivery?.zone || 'Sin zona',
-        deliveryTime: p.delivery_eta || '—',
-        assignedTo: p.delivery_assigned_to || 'Sin asignar',
-      })),
+  const aprobados = useMemo(
+    () => pedidos.filter((p) => p.status === 'approved').sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
     [pedidos]
   );
 
-  const filtered = filter === 'all' ? entregas : entregas.filter((e) => e.deliveryStatus === filter);
-  const selected = entregas.find((e) => e.id === selectedId);
+  const filtered = filter === 'all' ? aprobados : aprobados.filter((p) => (p.delivery_status ?? 'pending') === filter);
+  const selected = aprobados.find((p) => p.id === selectedId);
 
   const stats = {
-    total: entregas.length,
-    enRuta: entregas.filter((e) => e.deliveryStatus === 'En ruta').length,
-    entregado: entregas.filter((e) => e.deliveryStatus === 'Entregado').length,
-    pendiente: entregas.filter((e) => e.deliveryStatus === 'Pendiente de entrega').length,
+    total: aprobados.length,
+    pendiente: aprobados.filter((p) => (p.delivery_status ?? 'pending') === 'pending').length,
+    enRuta: aprobados.filter((p) => p.delivery_status === 'assigned' || p.delivery_status === 'in_transit').length,
+    entregado: aprobados.filter((p) => p.delivery_status === 'delivered').length,
+  };
+
+  const selectPedido = (p: Pedido) => {
+    setSelectedId(p.id);
+    setDraft({
+      assigned_to: p.delivery_assigned_to ?? '',
+      delivery_status: (p.delivery_status ?? 'pending') as NonNullable<DeliveryStatus>,
+      delivery_eta: p.delivery_eta ?? '',
+    });
+  };
+
+  const handleSave = async () => {
+    if (!selected) return;
+    if (!draft.assigned_to.trim()) return;
+    setSaving(true);
+    try {
+      await asignarEntrega(selected.id, {
+        assigned_to: draft.assigned_to.trim(),
+        delivery_status: draft.delivery_status,
+        delivery_eta: draft.delivery_eta.trim() || null,
+      });
+    } catch {
+      // context.error already carries the message; the banner above renders it.
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageHeader title="Logística — Entregas" subtitle="Seguimiento de despachos y repartidores" count={stats.total} countLabel="pedidos" />
+      <PageHeader title="Logística — Entregas" subtitle="Asigna repartidor, estado y ETA a pedidos aprobados" count={stats.total} countLabel="pedidos" />
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-rose-50 px-4 py-2.5 text-sm text-rose-600 ring-1 ring-inset ring-rose-100">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard icon={Truck} label="Total" value={stats.total} tone="slate" />
-        <StatCard icon={PackageSearch} label="En Ruta" value={stats.enRuta} tone="amber" />
+        <StatCard icon={Truck} label="Total Aprobados" value={stats.total} tone="slate" />
+        <StatCard icon={PackageSearch} label="Sin Asignar" value={stats.pendiente} tone="amber" />
+        <StatCard icon={PackageX} label="En Ruta" value={stats.enRuta} tone="brand" />
         <StatCard icon={PackageCheck} label="Entregados" value={stats.entregado} tone="emerald" />
-        <StatCard icon={PackageX} label="Pendientes" value={stats.pendiente} tone="rose" />
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
@@ -67,7 +107,7 @@ function LogisticaContent() {
             type="button"
             onClick={() => setFilter(f.key)}
             className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-              filter === f.key ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+              filter === f.key ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900' : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700 dark:hover:bg-slate-700'
             }`}
           >
             {f.label}
@@ -76,38 +116,39 @@ function LogisticaContent() {
       </div>
 
       <div className="mt-4 grid gap-5 lg:grid-cols-[1.4fr,1fr]">
-        <div className="overflow-hidden rounded-2xl bg-white dark:bg-slate-800 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
           <div className="max-h-[560px] overflow-auto scroll-thin">
             <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-400 dark:bg-slate-700/50 dark:text-slate-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Pedido</th>
                   <th className="px-4 py-3 font-medium">Cliente</th>
                   <th className="px-4 py-3 font-medium">Zona</th>
                   <th className="px-4 py-3 font-medium">Repartidor</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3 font-medium">Tiempo</th>
+                  <th className="px-4 py-3 font-medium">ETA</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
-                {filtered.map((p) => (
-                  <tr
-                    key={p.id}
-                    onClick={() => setSelectedId(p.id)}
-                    className={`cursor-pointer transition ${selectedId === p.id ? 'bg-brand-50/60 dark:bg-brand-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
-                  >
-                    <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">#{p.id}</td>
-                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">{p.customer.name}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{p.deliveryZone}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{p.assignedTo}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${STATUS_STYLES[p.deliveryStatus]}`}>
-                        {p.deliveryStatus}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{p.deliveryTime}</td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map((p) => {
+                  const status = (p.delivery_status ?? 'pending') as NonNullable<DeliveryStatus>;
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => selectPedido(p)}
+                      className={`cursor-pointer transition ${selectedId === p.id ? 'bg-brand-50/60 dark:bg-brand-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
+                    >
+                      <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{p.customer_name || 'Cliente sin nombre'}</td>
+                      <td className="px-4 py-3 text-slate-500">{p.delivery_zone || 'Sin zona'}</td>
+                      <td className="px-4 py-3 text-slate-500">{p.delivery_assigned_to || 'Sin asignar'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${STATUS_STYLES[status]}`}>
+                          {STATUS_LABEL[status]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{p.delivery_eta || '—'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {filtered.length === 0 && (
@@ -118,56 +159,66 @@ function LogisticaContent() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
           <h3 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">
-            <MapPin className="h-4 w-4 text-brand-600" /> Mapa de Entregas
+            <MapPin className="h-4 w-4 text-brand-600" /> Asignar Entrega
           </h3>
           {selected ? (
-            <div className="animate-fade-in">
-              <div className="overflow-hidden rounded-xl bg-slate-50 dark:bg-slate-900 ring-1 ring-slate-100 dark:ring-slate-700">
-                <svg viewBox="0 0 400 260" className="h-full w-full">
-                  <rect width="400" height="260" fill="#f1f5f9" className="dark:fill-slate-900" />
-                  <g stroke="#e2e8f0" className="dark:stroke-slate-700" strokeWidth="2">
-                    <line x1="80" y1="0" x2="80" y2="260" />
-                    <line x1="200" y1="0" x2="200" y2="260" />
-                    <line x1="320" y1="0" x2="320" y2="260" />
-                    <line x1="0" y1="90" x2="400" y2="90" />
-                    <line x1="0" y1="180" x2="400" y2="180" />
-                  </g>
-                  <circle cx="200" cy="135" r="24" fill="#25D366" opacity="0.15" />
-                  <circle cx="200" cy="135" r="10" fill="#16a34a" />
-                  <circle cx="200" cy="135" r="10" fill="none" stroke="#16a34a" strokeWidth="1.5" opacity="0.5">
-                    <animate attributeName="r" values="10;24;10" dur="2.4s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.5;0;0.5" dur="2.4s" repeatCount="indefinite" />
-                  </circle>
-                  <text x="200" y="168" fontSize="11" fontWeight="700" fill="#1e293b" className="dark:fill-slate-300" textAnchor="middle">
-                    Pedido #{selected.id}
-                  </text>
-                  <text x="200" y="184" fontSize="9.5" fill="#64748b" className="dark:fill-slate-400" textAnchor="middle">
-                    {selected.customer.name}
-                  </text>
-                  <text x="200" y="198" fontSize="9.5" fill="#64748b" className="dark:fill-slate-400" textAnchor="middle">
-                    {selected.deliveryZone}
-                  </text>
-                </svg>
+            <div className="animate-fade-in space-y-4">
+              <div className="rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-700/40">
+                <p className="font-semibold text-slate-800 dark:text-slate-100">{selected.customer_name || 'Cliente sin nombre'}</p>
+                <p className="text-xs text-slate-500">{selected.delivery_address || 'Sin dirección registrada'}</p>
+                <p className="text-xs text-slate-400">{selected.delivery_zone || 'Zona sin asignar'}</p>
               </div>
-              <div className="mt-4 space-y-2 text-sm">
-                <p className="flex justify-between text-slate-500 dark:text-slate-400">
-                  <span>Pedido</span> <span className="font-medium text-slate-800 dark:text-slate-200">#{selected.id}</span>
-                </p>
-                <p className="flex justify-between text-slate-500 dark:text-slate-400">
-                  <span>Zona</span> <span className="font-medium text-slate-800 dark:text-slate-200">{selected.deliveryZone}</span>
-                </p>
-                <p className="flex justify-between text-slate-500 dark:text-slate-400">
-                  <span>Estado</span> <span className="font-medium text-slate-800 dark:text-slate-200">{selected.deliveryStatus}</span>
-                </p>
-                <p className="flex justify-between text-slate-500 dark:text-slate-400">
-                  <span>Tiempo estimado</span> <span className="font-medium text-slate-800 dark:text-slate-200">{selected.deliveryTime}</span>
-                </p>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-500">Repartidor</label>
+                <input
+                  type="text"
+                  value={draft.assigned_to}
+                  onChange={(e) => setDraft({ ...draft, assigned_to: e.target.value })}
+                  placeholder="Nombre del repartidor"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                />
               </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-500">Estado de entrega</label>
+                <select
+                  value={draft.delivery_status}
+                  onChange={(e) => setDraft({ ...draft, delivery_status: e.target.value as NonNullable<DeliveryStatus> })}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                >
+                  {(Object.keys(STATUS_LABEL) as NonNullable<DeliveryStatus>[]).map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_LABEL[s]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-500">ETA / tiempo estimado</label>
+                <input
+                  type="text"
+                  value={draft.delivery_eta}
+                  onChange={(e) => setDraft({ ...draft, delivery_eta: e.target.value })}
+                  placeholder="Ej. 30 min"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving || !draft.assigned_to.trim()}
+                className="w-full rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? 'Guardando…' : 'Guardar entrega'}
+              </button>
             </div>
           ) : (
-            <EmptyState icon={MapPin} title="Selecciona un pedido" description="Elige un pedido de la lista para ver su ubicación." />
+            <EmptyState icon={MapPin} title="Selecciona un pedido" description="Elige un pedido aprobado de la lista para asignar su entrega." />
           )}
         </div>
       </div>

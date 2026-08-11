@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { 
-  Package, Clock, CheckCircle2, XCircle, Wallet,
-  TrendingUp 
+import {
+  Package, Clock, CheckCircle2, XCircle, Wallet, Plus,
+  TrendingUp, TrendingDown
 } from 'lucide-react';
 import { usePedidos } from '@/context/PedidosContext';
 import { formatCurrency, formatDateTime } from '@/lib/utils/format';
+import type { Pedido } from '@/lib/types';
 import StatCard from '@/components/dashboard/StatCard';
 import PedidoCard from '@/components/dashboard/PedidoCard';
 import PageHeader from '@/components/dashboard/PageHeader';
@@ -16,6 +17,38 @@ import WeeklyBarChart from '@/components/charts/WeeklyBarChart';
 import WeeklyLineChart from '@/components/charts/WeeklyLineChart';
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const TZ = 'America/Santo_Domingo';
+
+const STATUS_DOT_CLASS: Record<Pedido['status'], string> = {
+  pending: 'bg-amber-400',
+  pending_confirmation: 'bg-amber-400',
+  approved: 'bg-emerald-500',
+  rejected: 'bg-rose-500',
+  cancelled: 'bg-slate-400',
+};
+
+/** yyyy-mm-dd for the given instant, as observed in TZ. */
+function ymdInTZ(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
+    new Date(iso)
+  );
+}
+
+/** 0=Mon..6=Sun for the given instant, as observed in TZ. */
+function weekdayIndexInTZ(date: Date): number {
+  const short = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' }).format(date);
+  const map: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+  return map[short] ?? 0;
+}
+
+/** The 7 yyyy-mm-dd date strings (Mon..Sun) of the week containing `reference`, in TZ. */
+function weekDatesInTZ(reference: Date): string[] {
+  const todayIdx = weekdayIndexInTZ(reference);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(reference.getTime() + (i - todayIdx) * 86400000);
+    return ymdInTZ(d.toISOString());
+  });
+}
 
 export default function DashboardPage() {
   const { pedidos, aprobarPedido, rechazarPedido, agregarPedido } = usePedidos();
@@ -26,87 +59,63 @@ export default function DashboardPage() {
   const rechazados = useMemo(() => pedidos.filter((p) => p.status === 'rejected'), [pedidos]);
   const totalVentas = useMemo(() => aprobados.reduce((sum, p) => sum + (p.total || 0), 0), [aprobados]);
 
+  // Productos más vendidos
   const topProducts = useMemo(() => {
     const counts: Record<string, number> = {};
-    aprobados.forEach((p) => p.items.forEach((i: any) => (counts[i.product] = (counts[i.product] || 0) + i.quantity)));
+    aprobados.forEach((p) => p.items.forEach((i) => (counts[i.product] = (counts[i.product] || 0) + i.quantity)));
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [aprobados]);
-  
-  const { ventasPorDia, pedidosPorDia } = useMemo(() => {
-    
-    const today = new Date();
-    const dayOfWeek = today.getDay(); 
-    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1; 
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - mondayOffset);
-    monday.setHours(0, 0, 0, 0);
 
-    const ventas = DIAS.map(() => 0);
-    const cuenta = DIAS.map(() => 0);
-   
-    aprobados.forEach((p) => {
-      if (!p.created_at) return;
-      const orderDate = new Date(p.created_at);
-      const diffDays = Math.floor((orderDate.getTime() - monday.getTime()) / (1000 * 60 * 60 * 24));
-      
-      
-      if (diffDays >= 0 && diffDays < 7) {
-        ventas[diffDays] += p.total || 0;
-        cuenta[diffDays] += 1;
+  // Ventas/Pedidos por día de la semana actual (Lun..Dom, America/Santo_Domingo), a partir de pedidos reales.
+  const { ventasPorDia, pedidosPorDia, wowPercent } = useMemo(() => {
+    const now = new Date();
+    const thisWeek = weekDatesInTZ(now);
+    const lastWeek = weekDatesInTZ(new Date(now.getTime() - 7 * 86400000));
+
+    const ventas = Array(7).fill(0) as number[];
+    const cuenta = Array(7).fill(0) as number[];
+    let countThisWeek = 0;
+    let countLastWeek = 0;
+
+    pedidos.forEach((p) => {
+      const day = ymdInTZ(p.created_at);
+      const thisIdx = thisWeek.indexOf(day);
+      if (thisIdx !== -1) {
+        cuenta[thisIdx] += 1;
+        countThisWeek += 1;
+        if (p.status === 'approved') ventas[thisIdx] += p.total || 0;
+        return;
       }
+      if (lastWeek.indexOf(day) !== -1) countLastWeek += 1;
     });
 
-    return { ventasPorDia: ventas, pedidosPorDia: cuenta };
-  }, [aprobados]);
+    const wow = countLastWeek > 0 ? Math.round(((countThisWeek - countLastWeek) / countLastWeek) * 100) : null;
+    return { ventasPorDia: ventas, pedidosPorDia: cuenta, wowPercent: wow };
+  }, [pedidos]);
 
-  const crecimiento = useMemo(() => {
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - mondayOffset);
-    monday.setHours(0, 0, 0, 0);
-    
-    let currentWeek = 0;
-    
-    let previousWeek = 0;
-
-    const lastWeekMonday = new Date(monday);
-    lastWeekMonday.setDate(monday.getDate() - 7);
-
-    aprobados.forEach((p) => {
-      if (!p.created_at) return;
-      const orderDate = new Date(p.created_at);
-      const diffCurrent = Math.floor((orderDate.getTime() - monday.getTime()) / (1000 * 60 * 60 * 24));
-      const diffPrevious = Math.floor((orderDate.getTime() - lastWeekMonday.getTime()) / (1000 * 60 * 60 * 24));
-
-      if (diffCurrent >= 0 && diffCurrent < 7) {
-        currentWeek += 1;
-      } else if (diffPrevious >= 0 && diffPrevious < 7) {
-        previousWeek += 1;
-      }
-    });
-
-    if (previousWeek === 0) return { porcentaje: 0, signo: '' };
-    const pct = ((currentWeek - previousWeek) / previousWeek) * 100;
-    return {
-      porcentaje: Math.abs(Math.round(pct)),
-      signo: pct >= 0 ? '+' : '-'
-    };
-  }, [aprobados]);
-
-  const ultimos = (arr: any[]) =>
+  const ultimos = (arr: Pedido[]) =>
     [...arr].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
 
   const ultimosPendientes = useMemo(() => ultimos(pendientes), [pendientes]);
   const ultimosAprobados = useMemo(() => ultimos(aprobados), [aprobados]);
   const ultimosRechazados = useMemo(() => ultimos(rechazados), [rechazados]);
+
+  // Actividad reciente (todos los pedidos ordenados por fecha)
   const actividadReciente = useMemo(() => ultimos(pedidos), [pedidos]);
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageHeader title="Dashboard" subtitle="Resumen general de pedidos" count={pedidos.length} countLabel="pedidos" />
+      <PageHeader title="Dashboard" subtitle="Resumen general de pedidos" count={pedidos.length} countLabel="pedidos">
+        <button
+          type="button"
+          onClick={() => setFormOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
+        >
+          <Plus className="h-4 w-4" /> Nuevo Pedido
+        </button>
+      </PageHeader>
 
+      {/* Tarjetas de estadísticas */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard icon={Package} label="Total Pedidos" value={pedidos.length} tone="slate" />
         <StatCard icon={Clock} label="Pendientes" value={pendientes.length} tone="amber" />
@@ -115,29 +124,38 @@ export default function DashboardPage() {
         <StatCard icon={Wallet} label="Ventas Totales" value={formatCurrency(totalVentas)} tone="brand" />
       </div>
 
+      {/* Gráficos */}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Ventas por Día</h3>
-            <span className="text-xs text-slate-400 dark:text-slate-500">Esta semana</span>
+            <span className="text-xs text-slate-400">Esta semana</span>
           </div>
           <WeeklyBarChart labels={DIAS} values={ventasPorDia} />
         </div>
 
-        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Pedidos por Día</h3>
-            <span className="flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-              <TrendingUp className={`h-3 w-3 ${crecimiento.signo === '-' ? 'rotate-180 text-rose-500' : ''}`} />
-              {crecimiento.signo}{crecimiento.porcentaje}% vs semana pasada
-            </span>
+            {wowPercent !== null && (
+              <span
+                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                  wowPercent >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                }`}
+              >
+                {wowPercent >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                {wowPercent >= 0 ? '+' : ''}{wowPercent}% vs semana pasada
+              </span>
+            )}
           </div>
           <WeeklyLineChart labels={DIAS} values={pedidosPorDia} />
         </div>
       </div>
 
+      {/* Productos más vendidos y Actividad reciente */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+        {/* Productos más vendidos */}
+        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
           <h3 className="mb-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Productos Más Vendidos</h3>
           {topProducts.length === 0 ? (
             <EmptyState title="Sin productos vendidos aún" />
@@ -145,15 +163,15 @@ export default function DashboardPage() {
             <div className="space-y-3">
               {topProducts.map(([product, qty], index) => (
                 <div key={product} className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-xs font-bold text-slate-500 dark:text-slate-400">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">
                     {index + 1}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between text-sm">
                       <span className="truncate font-medium text-slate-700 dark:text-slate-300">{product}</span>
-                      <span className="ml-2 shrink-0 text-slate-400 dark:text-slate-500">{qty} un.</span>
+                      <span className="ml-2 shrink-0 text-slate-400">{qty} un.</span>
                     </div>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                       <div
                         className="h-full rounded-full bg-brand-500"
                         style={{ width: `${(qty / topProducts[0][1]) * 100}%` }}
@@ -166,7 +184,8 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+        {/* Actividad Reciente */}
+        <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
           <h3 className="mb-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Actividad Reciente</h3>
           <div className="space-y-4">
             {actividadReciente.length === 0 ? (
@@ -174,21 +193,17 @@ export default function DashboardPage() {
             ) : (
               actividadReciente.map((p) => (
                 <div key={p.id} className="flex items-start gap-3">
-                  <span
-                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                      p.status === 'pending' ? 'bg-amber-400' : 
-                      p.status === 'approved' ? 'bg-emerald-500' : 
-                      'bg-rose-500'
-                    }`}
-                  />
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${STATUS_DOT_CLASS[p.status]}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-slate-600 dark:text-slate-400">
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{p.customer.name}</span> —{' '}
-                      {p.status === 'pending' ? 'Pendiente' : 
-                       p.status === 'approved' ? 'Aprobado' : 
-                       'Rechazado'}
+                    <p className="truncate text-sm text-slate-600">
+                      <span className="font-semibold text-slate-800 dark:text-slate-100">{p.customer_name || 'Cliente sin nombre'}</span> —{' '}
+                      {p.status === 'pending' ? 'Pendiente' :
+                       p.status === 'approved' ? 'Aprobado' :
+                       p.status === 'rejected' ? 'Rechazado' :
+                       p.status === 'cancelled' ? 'Cancelado' :
+                       'Por confirmar'}
                     </p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">{formatDateTime(p.created_at)}</p>
+                    <p className="text-xs text-slate-400">{formatDateTime(p.created_at)}</p>
                   </div>
                 </div>
               ))
@@ -197,6 +212,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Últimos pedidos por estado */}
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <BoardColumn title="Últimos Pendientes" count={pendientes.length} dotClass="bg-amber-400">
           {ultimosPendientes.length === 0 ? (
@@ -232,12 +248,12 @@ export default function DashboardPage() {
 
 function BoardColumn({ title, count, dotClass, children }: any) {
   return (
-    <div className="rounded-2xl bg-white dark:bg-slate-800 p-4 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+    <div className="rounded-2xl bg-white p-4 shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
       <div className="mb-3 flex items-center justify-between px-1">
         <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
           <span className={`h-2 w-2 rounded-full ${dotClass}`} /> {title}
         </span>
-        <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2 py-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">{count}</span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{count}</span>
       </div>
       <div className="max-h-[520px] space-y-3 overflow-y-auto scroll-thin pr-1">{children}</div>
     </div>

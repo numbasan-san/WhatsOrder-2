@@ -1,25 +1,36 @@
-import { CheckCircle2, Clock, XCircle, LucideIcon } from 'lucide-react';
+import { CheckCircle2, Clock, XCircle, Ban, LucideIcon } from 'lucide-react';
+import type { OrderStatus } from '@/lib/types';
 
-const CONFIG: Record<string, { label: string; className: string; Icon: LucideIcon }> = {
+const CONFIG: Record<OrderStatus, { label: string; className: string; Icon: LucideIcon }> = {
+  pending_confirmation: {
+    label: 'Por confirmar',
+    className: 'bg-sky-50 text-sky-700 ring-sky-600/20',
+    Icon: Clock,
+  },
   pending: {
     label: 'Pendiente',
-    className: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-400 dark:ring-amber-500/20',
+    className: 'bg-amber-50 text-amber-700 ring-amber-600/20',
     Icon: Clock,
   },
   approved: {
     label: 'Aprobado',
-    className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-400 dark:ring-emerald-500/20',
+    className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
     Icon: CheckCircle2,
   },
   rejected: {
     label: 'Rechazado',
-    className: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-400 dark:ring-rose-500/20',
+    className: 'bg-rose-50 text-rose-700 ring-rose-600/20',
     Icon: XCircle,
+  },
+  cancelled: {
+    label: 'Cancelado',
+    className: 'bg-slate-100 text-slate-500 ring-slate-300/40',
+    Icon: Ban,
   },
 };
 
 interface StatusBadgeProps {
-  status: 'pending' | 'approved' | 'rejected';
+  status: OrderStatus;
   size?: 'sm' | 'md';
 }
 

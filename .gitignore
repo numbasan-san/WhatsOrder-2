@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# dev scripts (read secrets from .env.local at runtime)
+scripts/dev/

@@ -3,12 +3,13 @@ declare namespace NodeJS {
     // Supabase
     NEXT_PUBLIC_SUPABASE_URL: string
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: string
-    NEXT_PUBLIC_SUPABASE_SECRET_KEY: string
+    SUPABASE_SECRET_KEY: string
     NEXT_PUBLIC_SUPABASE_JWKS_URL?: string
 
     // Telegram
     TELEGRAM_BOT_TOKEN: string
     TELEGRAM_BOT_API_URL?: string
+    TELEGRAM_WEBHOOK_SECRET?: string
 
     // Gemini
     GEMINI_API_TOKEN: string

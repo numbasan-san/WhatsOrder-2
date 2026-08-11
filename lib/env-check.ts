@@ -6,8 +6,8 @@ export function checkEnvironmentVariables(): {
   missing: string[]
 } {
   const requiredVars = [
-    'SUPABASE_URL',
-    'SUPABASE_PUBLISHABLE_KEY',
+    'NEXT_PUBLIC_SUPABASE_URL',
+    'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
     'SUPABASE_SECRET_KEY',
     'TELEGRAM_BOT_TOKEN',
     'GEMINI_API_TOKEN'

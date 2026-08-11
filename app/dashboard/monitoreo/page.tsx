@@ -1,162 +1,118 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ShieldCheck, FilePlus2, CheckCircle2, XCircle, ListFilter } from 'lucide-react';
 import { usePedidos } from '@/context/PedidosContext';
 import { PedidosProvider } from '@/context/PedidosContext';
+import { createClient } from '@/lib/supabase/client';
 import PageHeader from '@/components/dashboard/PageHeader';
 import StatCard from '@/components/dashboard/StatCard';
 import EmptyState from '@/components/dashboard/EmptyState';
-import { seededInt, seededPick } from '@/lib/utils/seededRandom';
-import { AGENTES_CSR } from '@/lib/utils/constants';
-import { createClient } from '@/lib/supabase/client';
+import { formatDateTime } from '@/lib/utils/format';
 
-type LogType = 'creacion' | 'aprobacion' | 'rechazo';
+type ActorType = 'csr' | 'customer' | 'bot' | 'system';
+
+interface AuditRow {
+  id: string;
+  pedido_id: string | null;
+  actor_type: ActorType;
+  actor_id: string | null;
+  action: string;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  created: 'Pedido creado',
+  confirmed: 'Pedido confirmado',
+  approved: 'Pedido aprobado',
+  rejected: 'Pedido rechazado',
+  cancelled: 'Pedido cancelado',
+  assigned_delivery: 'Entrega asignada',
+};
+
+const ACTION_STYLES: Record<string, string> = {
+  created: 'bg-sky-50 text-sky-700 ring-sky-600/20',
+  confirmed: 'bg-sky-50 text-sky-700 ring-sky-600/20',
+  approved: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+  rejected: 'bg-rose-50 text-rose-700 ring-rose-600/20',
+  cancelled: 'bg-slate-100 text-slate-500 ring-slate-300/40',
+  assigned_delivery: 'bg-brand-50 text-brand-700 ring-brand-600/20',
+};
+
+const ACTOR_LABEL: Record<ActorType, string> = {
+  csr: 'CSR',
+  customer: 'Cliente',
+  bot: 'Bot Telegram',
+  system: 'Sistema',
+};
 
 const FILTERS = [
   { key: 'all', label: 'Todos' },
-  { key: 'creacion', label: 'Creaciones' },
-  { key: 'aprobacion', label: 'Aprobaciones' },
-  { key: 'rechazo', label: 'Rechazos' },
+  { key: 'created', label: 'Creaciones' },
+  { key: 'approved', label: 'Aprobaciones' },
+  { key: 'rejected', label: 'Rechazos' },
+  { key: 'assigned_delivery', label: 'Entregas' },
 ];
-
-const TYPE_STYLES: Record<LogType | 'all', string> = {
-  creacion: 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/30 dark:text-sky-400 dark:ring-sky-500/20',
-  aprobacion: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20',
-  rechazo: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/30 dark:text-rose-400 dark:ring-rose-500/20',
-  all: '',
-};
-
-const TYPE_LABEL: Record<LogType, string> = {
-  creacion: 'Creación',
-  aprobacion: 'Aprobación',
-  rechazo: 'Rechazo',
-};
 
 function MonitoreoContent() {
   const { pedidos } = usePedidos();
-  const [filterType, setFilterType] = useState<LogType | 'all'>('all');
-  const [userNames, setUserNames] = useState<Record<string, string>>({});
-  const supabase = createClient();
+  const [logs, setLogs] = useState<AuditRow[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [filterAction, setFilterAction] = useState('all');
 
-  // Cargar nombres de usuarios
   useEffect(() => {
-    const loadUserNames = async () => {
-      const userIds = new Set<string>();
-      
-      pedidos.forEach(p => {
-        if (p.approved_by && p.approved_by.length > 10) userIds.add(p.approved_by);
-        if (p.rejected_by && p.rejected_by.length > 10) userIds.add(p.rejected_by);
-      });
-
-      if (userIds.size === 0) return;
-
-      for (const userId of userIds) {
-        try {
-          if (userNames[userId]) continue;
-
-          const { data, error } = await supabase
-            .from('user_profiles')
-            .select('id, full_name')
-            .eq('id', userId)
-            .single();
-
-          if (error) {
-            setUserNames(prev => ({ ...prev, [userId]: `Usuario ${userId.slice(0, 8)}` }));
-          } else if (data) {
-            setUserNames(prev => ({ ...prev, [userId]: data.full_name || `Usuario ${userId.slice(0, 8)}` }));
-          }
-        } catch (error) {
-          setUserNames(prev => ({ ...prev, [userId]: `Usuario ${userId.slice(0, 8)}` }));
-        }
+    let active = true;
+    const supabase = createClient();
+    setLoading(true);
+    Promise.all([
+      supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase.from('user_profiles').select('id, full_name'),
+    ]).then(([logsRes, profilesRes]) => {
+      if (!active) return;
+      if (!logsRes.error && logsRes.data) setLogs(logsRes.data as AuditRow[]);
+      if (!profilesRes.error && profilesRes.data) {
+        const map: Record<string, string> = {};
+        (profilesRes.data as { id: string; full_name: string | null }[]).forEach((p) => {
+          if (p.full_name) map[p.id] = p.full_name;
+        });
+        setProfiles(map);
       }
+      setLoading(false);
+    });
+    return () => {
+      active = false;
     };
+  }, []);
 
-    if (pedidos.length > 0) {
-      loadUserNames();
-    }
-  }, [pedidos, supabase]);
+  const pedidoNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    pedidos.forEach((p) => {
+      map[p.id] = p.customer_name || 'Cliente sin nombre';
+    });
+    return map;
+  }, [pedidos]);
 
-  const getUserDisplayName = (userId: string | null): string => {
-    if (!userId) return 'CSR-Admin';
-    if (userId.length > 30 && userId.includes('-')) {
-      return userNames[userId] || `Usuario ${userId.slice(0, 8)}`;
+  const actorLabel = (log: AuditRow) => {
+    if (log.actor_type === 'csr' && log.actor_id) {
+      return profiles[log.actor_id] || ACTOR_LABEL.csr;
     }
-    return userId;
+    return ACTOR_LABEL[log.actor_type];
   };
 
-  const logs = useMemo(() => {
-    const entries = pedidos.flatMap((p) => {
-      const created = {
-        id: `${p.id}-creacion`,
-        orderId: p.id,
-        customer: p.customer.name,
-        action: 'Pedido creado',
-        user: 'CSR-Admin',
-        type: 'creacion' as LogType,
-        timestamp: p.created_at,
-        ip: `192.168.${seededInt(`${p.id}-ip1`, 0, 255)}.${seededInt(`${p.id}-ip2`, 0, 255)}`,
-      };
-
-      const entries2 = [created];
-
-      if (p.status === 'approved') {
-        const approverName = getUserDisplayName(p.approved_by);
-        entries2.push({
-          id: `${p.id}-aprobacion`,
-          orderId: p.id,
-          customer: p.customer.name,
-          action: 'Pedido aprobado',
-          user: approverName,
-          type: 'aprobacion' as LogType,
-          timestamp: p.approved_at || p.created_at,
-          ip: `192.168.${seededInt(`${p.id}-ip3`, 0, 255)}.${seededInt(`${p.id}-ip4`, 0, 255)}`,
-        });
-      } else if (p.status === 'rejected') {
-        const rejecterName = getUserDisplayName(p.rejected_by);
-        entries2.push({
-          id: `${p.id}-rechazo`,
-          orderId: p.id,
-          customer: p.customer.name,
-          action: 'Pedido rechazado',
-          user: rejecterName,
-          type: 'rechazo' as LogType,
-          timestamp: p.rejected_at || p.created_at,
-          ip: `192.168.${seededInt(`${p.id}-ip3`, 0, 255)}.${seededInt(`${p.id}-ip4`, 0, 255)}`,
-        });
-      } else {
-        entries2.push({
-          id: `${p.id}-pendiente`,
-          orderId: p.id,
-          customer: p.customer.name,
-          action: 'Pendiente de acción',
-          user: seededPick(`${p.id}-user`, AGENTES_CSR),
-          type: 'creacion' as LogType,
-          timestamp: p.created_at,
-          ip: `192.168.${seededInt(`${p.id}-ip3`, 0, 255)}.${seededInt(`${p.id}-ip4`, 0, 255)}`,
-        });
-      }
-
-      return entries2;
-    });
-
-    return entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [pedidos, userNames]);
-
-  const filteredLogs = filterType === 'all' 
-    ? logs 
-    : logs.filter((l) => l.type === filterType);
+  const filteredLogs = filterAction === 'all' ? logs : logs.filter((l) => l.action === filterAction);
 
   const stats = {
     total: logs.length,
-    creaciones: logs.filter((l) => l.type === 'creacion').length,
-    aprobaciones: logs.filter((l) => l.type === 'aprobacion').length,
-    rechazos: logs.filter((l) => l.type === 'rechazo').length,
+    creaciones: logs.filter((l) => l.action === 'created').length,
+    aprobaciones: logs.filter((l) => l.action === 'approved').length,
+    rechazos: logs.filter((l) => l.action === 'rejected').length,
   };
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageHeader title="Monitoreo — Auditoría" subtitle="Registro de actividad sobre los pedidos" count={stats.total} countLabel="registros" />
+      <PageHeader title="Monitoreo — Auditoría" subtitle="Registro real de actividad sobre los pedidos" count={stats.total} countLabel="registros" />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard icon={ShieldCheck} label="Total" value={stats.total} tone="slate" />
@@ -166,14 +122,14 @@ function MonitoreoContent() {
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        <ListFilter className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+        <ListFilter className="h-4 w-4 text-slate-400" />
         {FILTERS.map((f) => (
           <button
             key={f.key}
             type="button"
-            onClick={() => setFilterType(f.key as LogType | 'all')}
+            onClick={() => setFilterAction(f.key)}
             className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-              filterType === f.key ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+              filterAction === f.key ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900' : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700 dark:hover:bg-slate-700'
             }`}
           >
             {f.label}
@@ -181,52 +137,51 @@ function MonitoreoContent() {
         ))}
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-2xl bg-white dark:bg-slate-800 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700">
+      <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-100 dark:bg-slate-800 dark:shadow-card-dark dark:ring-slate-700">
         <div className="max-h-[600px] overflow-auto scroll-thin">
           <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-400 dark:bg-slate-700/50 dark:text-slate-400">
               <tr>
                 <th className="px-4 py-3 font-medium">Pedido</th>
                 <th className="px-4 py-3 font-medium">Cliente</th>
                 <th className="px-4 py-3 font-medium">Acción</th>
-                <th className="px-4 py-3 font-medium">Usuario</th>
+                <th className="px-4 py-3 font-medium">Actor</th>
                 <th className="px-4 py-3 font-medium">Tipo</th>
                 <th className="px-4 py-3 font-medium">Fecha/Hora</th>
-                <th className="px-4 py-3 font-medium">IP</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
-              {filteredLogs.slice(0, 50).map((log) => (
+            <tbody className="divide-y divide-slate-50">
+              {filteredLogs.map((log) => (
                 <tr key={log.id} className="transition hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                  <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">#{log.orderId}</td>
-                  <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">{log.customer}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{log.action}</td>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{log.user}</td>
+                  <td className="px-4 py-3 font-medium text-slate-500">
+                    {log.pedido_id ? `#${log.pedido_id.slice(0, 8)}` : '—'}
+                  </td>
+                  <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">
+                    {log.pedido_id ? pedidoNameById[log.pedido_id] || '—' : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{ACTION_LABEL[log.action] || log.action}</td>
+                  <td className="px-4 py-3 text-slate-500">{actorLabel(log)}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TYPE_STYLES[log.type]}`}>
-                      {TYPE_LABEL[log.type]}
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
+                        ACTION_STYLES[log.action] || 'bg-slate-100 text-slate-500 ring-slate-300/40'
+                      }`}
+                    >
+                      {ACTOR_LABEL[log.actor_type]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
-                    {new Date(log.timestamp).toLocaleString('es-DO', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                      hour12: true,
-                    })}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-400 dark:text-slate-500">{log.ip}</td>
+                  <td className="px-4 py-3 text-slate-500">{formatDateTime(log.created_at)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {filteredLogs.length === 0 && (
+          {!loading && filteredLogs.length === 0 && (
             <div className="p-6">
               <EmptyState title="Sin registros para este filtro" />
             </div>
+          )}
+          {loading && (
+            <div className="p-6 text-center text-sm text-slate-400">Cargando auditoría…</div>
           )}
         </div>
       </div>
