@@ -71,10 +71,10 @@ export class OrderService {
   private erp: ERPAdapter
   private telegram: TelegramAdapter
 
-  constructor(supabase: SupabaseClient = createServiceClient()) {
+  constructor(supabase: SupabaseClient = createServiceClient(), gemini: GeminiAdapter = new GeminiAdapter()) {
     this.supabase = supabase
     this.catalog = new CatalogService(supabase)
-    this.gemini = new GeminiAdapter()
+    this.gemini = gemini
     this.erp = new ERPAdapter(supabase)
     this.telegram = new TelegramAdapter()
   }
