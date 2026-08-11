@@ -38,7 +38,7 @@ export class GeminiAdapter implements ExternalServiceAdapter {
             }
           ],
           generationConfig: {
-            temperature: 0.3,
+            temperature: 0.1, // Reducir temperatura para respuestas más consistentes
             topK: 32,
             topP: 0.95,
             maxOutputTokens: 1024,
@@ -63,10 +63,10 @@ export class GeminiAdapter implements ExternalServiceAdapter {
       
       try {
         const parsed = JSON.parse(cleanedText)
-        return this.mapGeminiResponseToOrder(parsed)
+        return this.mapGeminiResponseToOrder(parsed, message)
       } catch (parseError) {
         console.error('Error parsing JSON:', parseError)
-        const fallbackResult = this.tryFallbackParsing(textResponse)
+        const fallbackResult = this.tryFallbackParsing(message)
         if (fallbackResult) {
           return fallbackResult
         }
@@ -80,26 +80,25 @@ export class GeminiAdapter implements ExternalServiceAdapter {
 
   private buildPrompt(message: string): string {
     return `
-  Extrae los productos y sus cantidades del siguiente mensaje:
+Extrae los productos y cantidades del siguiente mensaje:
 
-  Mensaje: "${message}"
+"${message}"
 
-  Reglas:
-  1. Identifica cada producto y su cantidad
-  2. Si no se especifica cantidad, asume 1
-  3. Devuelve SOLO JSON, sin texto adicional
-  4. Los nombres de productos deben estar en español
+Reglas:
+1. Cada producto debe tener un ID (nombre del producto) y una cantidad.
+2. Si el usuario dice "2 habichuelas", la cantidad es 2.
+3. Si el usuario dice "un plátano" o "1 plátano", la cantidad es 1.
+4. Si no se especifica cantidad, asume 1.
+5. Los números pueden estar en palabras (uno, dos, tres) o en dígitos (1, 2, 3).
 
-  Formato de respuesta:
-  {"products":[{"id":"nombre del producto","quantity":cantidad}]}
+Devuelve SOLO JSON con este formato:
+{"products":[{"id":"nombre_del_producto","quantity":numero}]}
 
-  Ejemplos:
-  - "Quiero 2 leches y 1 pan" → {"products":[{"id":"leche","quantity":2},{"id":"pan","quantity":1}]}
-  - "3 manzanas" → {"products":[{"id":"manzanas","quantity":3}]}
-  - "habichuelas y plátanos" → {"products":[{"id":"habichuelas","quantity":1},{"id":"plátanos","quantity":1}]}
+Ejemplo de entrada: "Quiero 2 habichuelas, 3 plátanos y 1 leche"
+Ejemplo de salida: {"products":[{"id":"habichuelas","quantity":2},{"id":"plátanos","quantity":3},{"id":"leche","quantity":1}]}
 
-  Extrae los productos del mensaje y devuelve SOLO el JSON.
-  `.trim();
+Importante: Cada producto debe tener su cantidad correcta. No uses 1 por defecto si el usuario especificó otra cantidad.
+`.trim()
   }
 
   private cleanJsonResponse(text: string): string {
@@ -122,29 +121,18 @@ export class GeminiAdapter implements ExternalServiceAdapter {
     }
     
     // Fix common JSON issues:
-    // 1. Remove trailing commas
     cleaned = cleaned.replace(/,\s*}/g, '}')
     cleaned = cleaned.replace(/,\s*\]/g, ']')
-    
-    // 2. Fix extra quotes at the end (like ...null"})
     cleaned = cleaned.replace(/"\s*}$/g, '}')
     cleaned = cleaned.replace(/"\s*\]\s*}$/g, ']}')
-    
-    // 3. Remove any trailing quotes that don't belong
-    cleaned = cleaned.replace(/"+/g, (match) => {
-      // If there are multiple quotes in a row, keep only one
-      return '"'
-    })
-    
-    // 4. Fix null values with quotes
+    cleaned = cleaned.replace(/"+/g, '"')
     cleaned = cleaned.replace(/"null"/g, 'null')
     cleaned = cleaned.replace(/"undefined"/g, 'null')
     
-    // 5. Ensure proper closing
+    // Ensure proper closing
     let openBraces = (cleaned.match(/\{/g) || []).length
     let closeBraces = (cleaned.match(/\}/g) || []).length
     
-    // If there's an extra closing brace, remove it
     while (closeBraces > openBraces) {
       const lastBraceIndex = cleaned.lastIndexOf('}')
       if (lastBraceIndex > 0) {
@@ -155,13 +143,11 @@ export class GeminiAdapter implements ExternalServiceAdapter {
       }
     }
     
-    // If there's a missing closing brace, add it
     while (closeBraces < openBraces) {
       cleaned += '}'
       closeBraces++
     }
     
-    // 6. Final cleanup: ensure it starts with { and ends with }
     if (!cleaned.startsWith('{')) {
       const firstBrace = cleaned.indexOf('{')
       if (firstBrace > 0) {
@@ -184,66 +170,106 @@ export class GeminiAdapter implements ExternalServiceAdapter {
     try {
       const products: ProductItem[] = []
       
-      // Try to extract product names and quantities using regex
-      const productMatches = rawText.matchAll(/["']?id["']?\s*:\s*["']([^"']+)["']/gi)
-      const quantityMatches = rawText.matchAll(/["']?quantity["']?\s*:\s*(\d+)/gi)
-      
-      const ids: string[] = []
-      const quantities: number[] = []
-      
-      for (const match of productMatches) {
-        ids.push(match[1])
+      // Patrón para capturar "cantidad + producto"
+      // Ejemplos: "2 habichuelas", "3 plátanos", "un pan", "1 leche"
+      const patterns = [
+        // Número + producto: "2 habichuelas", "3 plátanos"
+        /(\d+)\s*([a-záéíóúñ\s]+)/gi,
+        // Palabra numérica + producto: "dos habichuelas", "tres plátanos"
+        /(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s*([a-záéíóúñ\s]+)/gi,
+        // "un/una" + producto: "un pan", "una leche"
+        /un\s*([a-záéíóúñ\s]+)/gi,
+        /una\s*([a-záéíóúñ\s]+)/gi
+      ]
+
+      // Mapeo de palabras numéricas a números
+      const numMap: Record<string, number> = {
+        'uno': 1, 'una': 1, 'un': 1,
+        'dos': 2, 'tres': 3, 'cuatro': 4,
+        'cinco': 5, 'seis': 6, 'siete': 7,
+        'ocho': 8, 'nueve': 9, 'diez': 10
       }
-      
-      for (const match of quantityMatches) {
-        quantities.push(parseInt(match[1]))
-      }
-      
-      // If we have IDs, use them
-      if (ids.length > 0) {
-        ids.forEach((id, index) => {
-          const quantity = quantities[index] || 1
+
+      // Primero intentar con el patrón de número + producto
+      const matches = rawText.matchAll(/(\d+)\s*([a-záéíóúñ\s]+?)(?:,|\.|;|$|y)/gi)
+      for (const match of matches) {
+        const quantity = parseInt(match[1])
+        const product = match[2].trim().toLowerCase()
+        if (product && product.length > 1 && !this.isStopWord(product)) {
           products.push({
-            id: this.normalizeProductName(id),
+            id: this.normalizeProductName(product),
             quantity: Math.max(1, quantity),
             price: 0
           })
-        })
-        return { products }
+        }
       }
-      
-      // Try to find any quoted strings that might be products
-      const stringMatches = rawText.match(/["']([^"']+)["']/g)
-      if (stringMatches && stringMatches.length > 0) {
-        stringMatches.forEach((match) => {
-          const cleanMatch = match.replace(/["']/g, '')
-          if (cleanMatch.length > 1 && 
-              !['products', 'id', 'quantity', 'customerName', 'deliveryAddress', 'null', 'true', 'false'].includes(cleanMatch.toLowerCase())) {
+
+      // Si no encontramos nada con números, buscar con palabras
+      if (products.length === 0) {
+        const wordMatches = rawText.matchAll(/(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s*([a-záéíóúñ\s]+?)(?:,|\.|;|$|y)/gi)
+        for (const match of wordMatches) {
+          const quantity = numMap[match[1].toLowerCase()] || 1
+          const product = match[2].trim().toLowerCase()
+          if (product && product.length > 1 && !this.isStopWord(product)) {
             products.push({
-              id: this.normalizeProductName(cleanMatch),
+              id: this.normalizeProductName(product),
+              quantity: Math.max(1, quantity),
+              price: 0
+            })
+          }
+        }
+      }
+
+      // Si aún no hay productos, buscar "un/una" + producto
+      if (products.length === 0) {
+        const singleMatches = rawText.matchAll(/(?:un|una)\s*([a-záéíóúñ\s]+?)(?:,|\.|;|$|y)/gi)
+        for (const match of singleMatches) {
+          const product = match[1].trim().toLowerCase()
+          if (product && product.length > 1 && !this.isStopWord(product)) {
+            products.push({
+              id: this.normalizeProductName(product),
               quantity: 1,
               price: 0
             })
           }
-        })
-        if (products.length > 0) {
-          return { products }
         }
       }
-      
+
+      if (products.length > 0) {
+        // Limpiar productos duplicados (sumar cantidades)
+        const cleanProducts: Record<string, ProductItem> = {}
+        for (const p of products) {
+          if (cleanProducts[p.id]) {
+            cleanProducts[p.id].quantity += p.quantity
+          } else {
+            cleanProducts[p.id] = p
+          }
+        }
+        return { products: Object.values(cleanProducts) }
+      }
+
       return null
-    } catch {
+    } catch (e) {
+      console.error('Fallback parsing error:', e)
       return null
     }
   }
 
-  private mapGeminiResponseToOrder(geminiResponse: any): InterpretedOrder {
+  private isStopWord(word: string): boolean {
+    const stopWords = ['quiero', 'deseo', 'necesito', 'por favor', 'favor', 'gracias', 'buenas', 'hola', 'comprar', 'llevar', 'pedir']
+    return stopWords.some(sw => word.includes(sw))
+  }
+
+  private mapGeminiResponseToOrder(geminiResponse: any, originalMessage?: string): InterpretedOrder {
     const products: ProductItem[] = []
     
     if (Array.isArray(geminiResponse.products)) {
       geminiResponse.products.forEach((p: any) => {
         const id = p.id || p.name || p.product || p.producto || p.nombre
-        const quantity = parseInt(p.quantity || p.cantidad || 1)
+        // Si la cantidad es undefined o null, intentar extraer del mensaje original
+        let quantity = parseInt(p.quantity || p.cantidad || 1)
+        if (isNaN(quantity) || quantity < 1) quantity = 1
+        
         if (id) {
           products.push({
             id: this.normalizeProductName(id),
@@ -254,15 +280,10 @@ export class GeminiAdapter implements ExternalServiceAdapter {
       })
     }
     
-    if (products.length === 0 && geminiResponse.items) {
-      Object.entries(geminiResponse.items).forEach(([key, value]) => {
-        const quantity = typeof value === 'number' ? value : 1
-        products.push({
-          id: this.normalizeProductName(key),
-          quantity: Math.max(1, quantity),
-          price: 0
-        })
-      })
+    // Si no se encontraron productos, intentar con fallback
+    if (products.length === 0 && originalMessage) {
+      const fallback = this.tryFallbackParsing(originalMessage)
+      if (fallback) return fallback
     }
 
     return {
