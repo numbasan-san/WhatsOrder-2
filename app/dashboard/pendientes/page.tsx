@@ -44,7 +44,7 @@ function PendientesContent() {
       )}
 
       <div className="grid gap-5 lg:grid-cols-[380px,1fr]">
-        <div className="max-h-[75vh] space-y-2.5 overflow-y-auto scroll-thin rounded-2xl bg-slate-50/70 p-3 ring-1 ring-slate-100 lg:max-h-[calc(100vh-180px)]">
+        <div className="max-h-[75vh] space-y-2.5 overflow-y-auto scroll-thin rounded-2xl bg-slate-50/70 p-3 ring-1 ring-slate-100 dark:bg-slate-800/40 dark:ring-slate-700 lg:max-h-[calc(100vh-180px)]">
           {pendientes.length === 0 ? (
             <EmptyState icon={Inbox} title="No hay pedidos pendientes" description="Todos los pedidos han sido procesados." />
           ) : (
