@@ -48,7 +48,7 @@ export class GeminiAdapter implements ExternalServiceAdapter {
 
     const data = await response.json()
     const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
-    return parseGeminiOrder(textResponse)
+    return parseGeminiOrder(textResponse, message)
   }
 
   async send(): Promise<never> {
