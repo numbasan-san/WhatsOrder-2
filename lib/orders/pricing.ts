@@ -30,10 +30,14 @@ export function matchItemsToCatalog(
   for (const req of requested) {
     const n = normalizeName(req.name)
     const exact = catalog.find((c) => normalizeName(c.name) === n)
-    const partial = exact ?? catalog.find((c) => {
-      const cn = normalizeName(c.name)
-      return cn.includes(n) || n.includes(cn.split(' ')[0])
-    })
+    let partial = exact
+    if (!partial) {
+      const scored = catalog
+        .map((c) => ({ c, score: matchScore(req.name, c.name) }))
+        .filter((s) => s.score >= 2)
+        .sort((a, b) => b.score - a.score)
+      partial = scored[0]?.c
+    }
     if (!partial) { unmatched.push(req.name); continue }
     const quantity = Math.max(1, Math.floor(req.quantity || 1))
     items.push({

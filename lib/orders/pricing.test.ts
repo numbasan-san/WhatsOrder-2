@@ -43,6 +43,14 @@ describe('matchItemsToCatalog', () => {
     const r = matchItemsToCatalog([{ name: 'pan', quantity: 0 }], catalog)
     expect(r.items[0].quantity).toBe(1)
   })
+  it('ranks the best-scoring candidate, not the first loose match', () => {
+    const local: Producto[] = [
+      { id: '3', sku: 'leche-desc', name: 'Leche descremada 1L', price: 70, stock: 10, active: true },
+      { id: '1', sku: 'leche-1l', name: 'Leche entera 1L', price: 65, stock: 10, active: true },
+    ]
+    const r = matchItemsToCatalog([{ name: 'leche entera', quantity: 1 }], local)
+    expect(r.items[0].sku).toBe('leche-1l')
+  })
 })
 
 describe('orderTotal', () => {
