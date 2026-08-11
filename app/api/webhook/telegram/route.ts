@@ -29,19 +29,23 @@ const AI_BUSY_MESSAGE =
 
 const GENERIC_ERROR_MESSAGE = 'Ocurrió un error procesando tu pedido. Por favor, intenta de nuevo más tarde.'
 
-function unmatchedSuffix(unmatched?: string[]): string {
+function unmatchedSuffix(unmatched?: string[], suggestions?: Record<string, string[]>): string {
   if (!unmatched || unmatched.length === 0) return ''
-  return `\n\n⚠️ No identifiqué: ${unmatched.join(', ')}`
+  const lines = unmatched.map((u) => {
+    const s = suggestions?.[u]
+    return s && s.length ? `${u} (¿quisiste decir: ${s.join(', ')}?)` : u
+  })
+  return `\n\n⚠️ No identifiqué: ${lines.join('; ')}`
 }
 
 async function sendDraftResult(telegram: TelegramAdapter, chatId: string, res: DraftResult): Promise<void> {
   if (res.status === 'no_items') {
-    await telegram.sendSimpleMessage(chatId, NO_ITEMS_MESSAGE + unmatchedSuffix(res.unmatched))
+    await telegram.sendSimpleMessage(chatId, NO_ITEMS_MESSAGE + unmatchedSuffix(res.unmatched, res.suggestions))
     return
   }
 
   if (res.status === 'need_address') {
-    await telegram.sendSimpleMessage(chatId, NEED_ADDRESS_MESSAGE + unmatchedSuffix(res.unmatched))
+    await telegram.sendSimpleMessage(chatId, NEED_ADDRESS_MESSAGE + unmatchedSuffix(res.unmatched, res.suggestions))
     return
   }
 
@@ -55,7 +59,7 @@ async function sendDraftResult(telegram: TelegramAdapter, chatId: string, res: D
     [{ text: 'Contactar Soporte', callbackData: 'contact_support' }],
   ])
   if (res.unmatched && res.unmatched.length > 0) {
-    await telegram.sendSimpleMessage(chatId, `⚠️ No identifiqué: ${res.unmatched.join(', ')}`)
+    await telegram.sendSimpleMessage(chatId, unmatchedSuffix(res.unmatched, res.suggestions).trim())
   }
 }
 

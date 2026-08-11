@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '@/lib/supabase/service'
 import { CatalogService } from '@/lib/catalog/catalog-service'
-import { matchItemsToCatalog, orderTotal, buildOrderSummary } from '@/lib/orders/pricing'
+import { matchItemsToCatalog, orderTotal, buildOrderSummary, suggestNames } from '@/lib/orders/pricing'
 import { canTransition } from '@/lib/orders/order-state'
 import { GeminiAdapter } from '@/lib/adapters/gemini-adapter'
 import { ERPAdapter } from '@/lib/adapters/erp-adapter'
@@ -14,6 +14,8 @@ export interface DraftResult {
   pedidoId?: string
   summary?: string
   unmatched?: string[]
+  /** For each unmatched name, up to 3 closest catalog names to offer as "did you mean". */
+  suggestions?: Record<string, string[]>
 }
 
 interface OrderDraft {
@@ -88,9 +90,12 @@ export class OrderService {
     const names = catalog.map((c) => c.name)
     const parsed = await this.gemini.interpret(message, names)
     const { items, unmatched } = matchItemsToCatalog(parsed.items, catalog)
+    const suggestions = unmatched.length
+      ? Object.fromEntries(unmatched.map((u) => [u, suggestNames(u, catalog)]))
+      : undefined
 
     if (items.length === 0) {
-      return { status: 'no_items', unmatched }
+      return { status: 'no_items', unmatched, suggestions }
     }
 
     if (!parsed.deliveryAddress) {
@@ -99,7 +104,7 @@ export class OrderService {
         unmatched,
         customerName: parsed.customerName ?? null,
       } satisfies OrderDraft)
-      return { status: 'need_address', unmatched }
+      return { status: 'need_address', unmatched, suggestions }
     }
 
     const pedidoId = await this.insertDraft(chatId, items, parsed.customerName ?? null, parsed.deliveryAddress)
@@ -108,6 +113,7 @@ export class OrderService {
       pedidoId,
       summary: buildOrderSummary(items, orderTotal(items), parsed.deliveryAddress),
       unmatched,
+      suggestions,
     }
   }
 
