@@ -5,6 +5,7 @@ import { TelegramAdapter } from '@/lib/adapters/telegram-adapter'
 import { claimUpdate } from '@/lib/telegram/idempotency'
 import { checkAndConsumeRate } from '@/lib/telegram/rate-limit'
 import { getConversation } from '@/lib/telegram/conversation'
+import { checkEnvironmentVariables } from '@/lib/env-check'
 
 const WELCOME_MESSAGE = [
   '👋 ¡Bienvenido a WhatsOrder!',
@@ -72,6 +73,17 @@ async function sendDraftResult(telegram: TelegramAdapter, chatId: string, res: D
 
 export async function POST(req: NextRequest) {
   try {
+    // Fail fast and LOUD on misconfiguration. The specific missing var names go to the
+    // server logs only (Vercel Functions logs) -- never to the HTTP response, since this
+    // is a public endpoint and leaking which secrets are unset is an info-disclosure risk.
+    // Returning 500 (not 200) makes Telegram retry and surfaces the failure in
+    // getWebhookInfo, instead of the bot silently swallowing every message.
+    const env = checkEnvironmentVariables()
+    if (!env.valid) {
+      console.error('Telegram webhook misconfigured — missing required env vars:', env.missing.join(', '))
+      return NextResponse.json({ status: 'error' }, { status: 500 })
+    }
+
     const expected = process.env.TELEGRAM_WEBHOOK_SECRET
     if (expected && req.headers.get('x-telegram-bot-api-secret-token') !== expected) {
       return NextResponse.json({ status: 'forbidden' }, { status: 401 })
@@ -166,8 +178,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ status: 'no_action' })
   } catch (error) {
+    // Unexpected/systemic failure (e.g. a Supabase client that can't init, a thrown
+    // adapter). Return 500 -- not 200 -- so Telegram retries and getWebhookInfo shows it,
+    // rather than the update being silently dropped. Body stays generic; details are logged.
     console.error('Webhook error:', error)
-    return NextResponse.json({ status: 'error' })
+    return NextResponse.json({ status: 'error' }, { status: 500 })
   }
 }
 

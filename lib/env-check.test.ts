@@ -28,7 +28,7 @@ describe('checkEnvironmentVariables', () => {
 
   it('flags exactly the one missing var (e.g. SUPABASE_SECRET_KEY)', () => {
     for (const k of REQUIRED) { saved[k] = process.env[k]; process.env[k] = 'x' }
-    delete process.env.SUPABASE_SECRET_KEY
+    process.env.SUPABASE_SECRET_KEY = '' // falsy => treated as missing
     const { valid, missing } = checkEnvironmentVariables()
     expect(valid).toBe(false)
     expect(missing).toEqual(['SUPABASE_SECRET_KEY'])
