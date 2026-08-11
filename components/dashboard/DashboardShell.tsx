@@ -15,12 +15,12 @@ export default function DashboardShell({
   return (
     <ThemeProvider>
     <PedidosProvider>
-      <div className="flex min-h-screen bg-slate-50">
+      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-900">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Mobile header */}
-          <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur lg:hidden">
+          <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur dark:border-slate-700 dark:bg-slate-800/80 lg:hidden">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
@@ -30,7 +30,7 @@ export default function DashboardShell({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <span className="text-sm font-semibold text-slate-900">WhatsOrder</span>
+            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">WhatsOrder</span>
           </div>
 
           <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
