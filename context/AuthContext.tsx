@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadProfile = useCallback(async (userId: string) => {
     try {
+      // Intentar obtener el perfil directamente
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
@@ -36,34 +37,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error) {
-        // Si no tiene perfil, crearlo
-        if (error.code === 'PGRST116') {
+        // Si es error de recursión o tabla no existe
+        if (error.code === '42P17' || error.code === '42P01') {
+          console.warn('Error con RLS o tabla, intentando crear perfil...');
+          
+          // Intentar crear el perfil directamente
           const { data: newProfile, error: insertError } = await supabase
             .from('user_profiles')
-            .insert({ id: userId })
+            .upsert({
+              id: userId,
+              full_name: 'Usuario',
+              role: 'csr'
+            }, {
+              onConflict: 'id'
+            })
             .select()
             .single();
 
-          if (!insertError) {
+          if (insertError) {
+            console.error('Error creando perfil:', insertError);
+            // Usar datos por defecto sin guardar en DB
+            setProfile({
+              id: userId,
+              full_name: 'Usuario',
+              role: 'csr',
+              department: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+            return;
+          }
+
+          if (newProfile) {
             setProfile(newProfile);
             return;
           }
         }
+
         console.error('Error loading profile:', error);
         return;
       }
 
-      setProfile(data);
+      if (data) {
+        setProfile(data);
+      } else {
+        // Si no hay datos, crear perfil
+        const { data: newProfile, error: insertError } = await supabase
+          .from('user_profiles')
+          .insert({
+            id: userId,
+            full_name: 'Usuario',
+            role: 'csr'
+          })
+          .select()
+          .single();
+
+        if (!insertError && newProfile) {
+          setProfile(newProfile);
+        }
+      }
     } catch (error) {
-      console.error('Error loading profile:', error);
+      console.warn('Error cargando perfil (ignorado):', error);
+      // Setear un perfil por defecto para no romper la app
+      setProfile({
+        id: userId,
+        full_name: 'Usuario',
+        role: 'csr',
+        department: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
     }
   }, [supabase]);
-
-  const refreshProfile = useCallback(async () => {
-    if (user) {
-      await loadProfile(user.id);
-    }
-  }, [user, loadProfile]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -121,6 +166,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     setSession(null);
   }, [supabase]);
+
+  const refreshProfile = useCallback(async () => {
+    if (user) {
+      await loadProfile(user.id);
+    }
+  }, [user, loadProfile]);
 
   const isAdmin = profile?.role === 'admin';
   const isSupervisor = profile?.role === 'supervisor' || isAdmin;

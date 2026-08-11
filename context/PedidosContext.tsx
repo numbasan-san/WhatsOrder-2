@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { TelegramAdapter } from '@/lib/adapters/telegram-adapter';
+import { useAuth } from '@/context/AuthContext';
 
 interface PedidosContextType {
   pedidos: any[];
@@ -18,6 +20,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
+  const { user } = useAuth(); // Obtener el usuario autenticado
 
   const loadPedidos = useCallback(async () => {
     try {
@@ -34,7 +37,6 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         throw error;
       }
 
-      console.log('✅ Datos recibidos:', data);
       console.log(`📦 Total de pedidos: ${data?.length || 0}`);
 
       if (!data || data.length === 0) {
@@ -43,19 +45,16 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Mapear los datos correctamente
       const mappedPedidos = data.map((p: any) => {
-        // TRANSFORMAR ITEMS: Asegurar que tengan "product" como nombre legible
-        const mappedItems = (p.items || []).map((item: any) => {
-          // Buscar el nombre del producto en diferentes campos
-          const productName = item.product || item.name || item.id || 'Producto sin nombre';
-          
-          return {
-            product: productName,   // ← Nombre legible para mostrar
-            quantity: item.quantity || 0,
-            subtotal: item.subtotal || item.price * item.quantity || 0,
-          };
-        });
+        let items = p.items;
+        if (typeof p.items === 'string') {
+          try {
+            items = JSON.parse(p.items);
+          } catch (e) {
+            console.warn('Error parseando items para pedido:', p.id);
+            items = [];
+          }
+        }
 
         return {
           id: p.id,
@@ -68,10 +67,13 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           delivery: {
             address: p.delivery_address || 'Sin dirección',
             city: p.delivery_city || 'Santo Domingo',
-            zone: p.delivery_zone || 'Zona sin asignar',
             instructions: p.delivery_instructions || p.notes || '',
           },
-          items: mappedItems, // ← Items transformados con nombres legibles
+          items: Array.isArray(items) ? items.map((item: any) => ({
+            product: item.product || item.name || item.id || 'Producto sin nombre',
+            quantity: item.quantity || 0,
+            subtotal: item.subtotal || (item.price * item.quantity) || 0,
+          })) : [],
           total: p.total || 0,
           status: p.status || 'pending',
           created_by: p.created_by || 'Sistema',
@@ -89,7 +91,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         };
       });
 
-      console.log('✅ Pedidos mapeados:', mappedPedidos);
+      console.log('✅ Pedidos mapeados:', mappedPedidos.length);
       setPedidos(mappedPedidos);
     } catch (error) {
       console.error('❌ Error cargando pedidos:', error);
@@ -104,49 +106,159 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
 
   const aprobarPedido = useCallback(async (id: string) => {
     try {
-      console.log(`✅ Aprobando pedido ${id}...`);
-      const { error } = await supabase
+      console.log('🔍 === INICIANDO APROBACIÓN ===');
+      console.log('📝 ID del pedido:', id);
+
+      // Verificar que el usuario está autenticado
+      if (!user) {
+        console.error('❌ Usuario no autenticado');
+        throw new Error('Usuario no autenticado');
+      }
+
+      // 1. Primero, verificar que el pedido existe
+      const { data: existingOrder, error: checkError } = await supabase
         .from('pedidos')
-        .update({
-          status: 'approved',
-          approved_by: 'CSR-Admin',
-          approved_at: new Date().toISOString(),
-        })
+        .select('id, status')
+        .eq('id', id)
+        .single();
+
+      if (checkError) {
+        console.error('❌ Error verificando pedido:', checkError);
+        throw checkError;
+      }
+
+      if (!existingOrder) {
+        console.error('❌ Pedido no encontrado:', id);
+        throw new Error('Pedido no encontrado');
+      }
+
+      console.log('📊 Pedido encontrado, estado actual:', existingOrder.status);
+
+      // 2. Actualizar el estado usando el UUID del usuario
+      const updateData = {
+        status: 'approved',
+        approved_by: user.id, // Usar el UUID del usuario autenticado
+        approved_at: new Date().toISOString(),
+      };
+      console.log('📝 Datos a actualizar:', updateData);
+
+      // 3. Ejecutar la actualización
+      const { error: updateError } = await supabase
+        .from('pedidos')
+        .update(updateData)
         .eq('id', id);
 
-      if (error) throw error;
-      console.log('✅ Pedido aprobado');
+      if (updateError) {
+        console.error('❌ Error al actualizar:', updateError);
+        throw updateError;
+      }
+
+      console.log('✅ Pedido actualizado correctamente');
+
+      // 4. Verificar que se actualizó
+      const { data: updatedOrder, error: verifyError } = await supabase
+        .from('pedidos')
+        .select('id, status, approved_by')
+        .eq('id', id)
+        .single();
+
+      if (verifyError) {
+        console.error('❌ Error verificando actualización:', verifyError);
+      } else {
+        console.log('✅ Verificación - Nuevo estado:', updatedOrder?.status, 'Aprobado por:', updatedOrder?.approved_by);
+      }
+
+      // 5. Recargar pedidos
       await loadPedidos();
+
+      console.log('✅ === APROBACIÓN COMPLETADA ===');
     } catch (error) {
-      console.error('❌ Error aprobando pedido:', error);
+      console.error('❌ Error en aprobarPedido:', error);
+      throw error;
     }
-  }, [supabase, loadPedidos]);
+  }, [supabase, loadPedidos, user]);
 
   const rechazarPedido = useCallback(async (id: string, motivo: string) => {
     try {
       console.log(`❌ Rechazando pedido ${id}...`);
-      const { error } = await supabase
+      console.log(`📝 Motivo: ${motivo}`);
+
+      // Verificar que el usuario está autenticado
+      if (!user) {
+        console.error('❌ Usuario no autenticado');
+        throw new Error('Usuario no autenticado');
+      }
+
+      // 1. Verificar que el pedido existe
+      const { data: existingOrder, error: checkError } = await supabase
         .from('pedidos')
-        .update({
-          status: 'rejected',
-          notes: motivo,
-          approved_by: 'CSR-Admin',
-          approved_at: new Date().toISOString(),
-        })
+        .select('id, status, customer_phone, customer_name, items, total, source')
+        .eq('id', id)
+        .single();
+
+      if (checkError) {
+        console.error('❌ Error verificando pedido:', checkError);
+        throw checkError;
+      }
+
+      if (!existingOrder) {
+        console.error('❌ Pedido no encontrado:', id);
+        throw new Error('Pedido no encontrado');
+      }
+
+      console.log('📊 Pedido encontrado:', existingOrder);
+
+      // 2. Actualizar el estado usando el UUID del usuario
+      const updateData = {
+        status: 'rejected',
+        rejected_by: user.id, // Usar el UUID del usuario autenticado
+        rejected_at: new Date().toISOString(),
+        rejection_reason: motivo,
+        notes: motivo,
+      };
+
+      const { error: updateError } = await supabase
+        .from('pedidos')
+        .update(updateData)
         .eq('id', id);
 
-      if (error) throw error;
-      console.log('✅ Pedido rechazado');
+      if (updateError) {
+        console.error('❌ Error al actualizar:', updateError);
+        throw updateError;
+      }
+
+      console.log('❌ Pedido rechazado correctamente');
+
+      // 3. Recargar pedidos
       await loadPedidos();
+
+      // 4. Enviar notificación por Telegram si es necesario
+      if (existingOrder?.source === 'telegram') {
+        try {
+          const telegram = new TelegramAdapter();
+          const message = `❌ Pedido #${id.slice(0, 8)} RECHAZADO\n\n` +
+            `📋 Detalles:\n` +
+            `👤 Cliente: ${existingOrder.customer_name || 'Cliente'}\n` +
+            `📝 Motivo: ${motivo}\n\n` +
+            `🔄 Por favor, contacta a soporte para más información.`;
+
+          await telegram.sendSimpleMessage(
+            existingOrder.customer_phone,
+            message
+          );
+        } catch (telegramError) {
+          console.warn('⚠️ Error enviando notificación Telegram:', telegramError);
+        }
+      }
     } catch (error) {
       console.error('❌ Error rechazando pedido:', error);
+      throw error;
     }
-  }, [supabase, loadPedidos]);
+  }, [supabase, loadPedidos, user]);
 
   const agregarPedido = useCallback(async (datos: any) => {
     try {
-      console.log('📝 Agregando nuevo pedido...');
-      console.log('📝 Datos recibidos:', datos);
+      console.log('Agregando nuevo pedido...');
 
       const items = datos.items.map((i: any) => ({
         product: i.product,
@@ -165,27 +277,23 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         status: 'pending',
         source: 'dashboard',
         notes: datos.delivery_instructions || '',
-        created_by: 'CSR-Admin',
+        created_by: user?.id || null, // Usar UUID del usuario o null
         created_at: new Date().toISOString(),
       };
 
-      console.log('📝 Insertando en Supabase:', nuevoPedido);
-
-      const { error } = await supabase
-        .from('pedidos')
-        .insert(nuevoPedido);
+      const { error } = await supabase.from('pedidos').insert(nuevoPedido);
 
       if (error) {
-        console.error('❌ Error en insert:', error);
+        console.error('Error en insert:', error);
         throw error;
       }
 
-      console.log('✅ Pedido agregado correctamente');
+      console.log('Pedido agregado correctamente');
       await loadPedidos();
     } catch (error) {
-      console.error('❌ Error agregando pedido:', error);
+      console.error('Error agregando pedido:', error);
     }
-  }, [supabase, loadPedidos]);
+  }, [supabase, loadPedidos, user]);
 
   const refreshPedidos = useCallback(async () => {
     await loadPedidos();

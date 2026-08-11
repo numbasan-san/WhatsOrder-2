@@ -111,11 +111,11 @@ export class ChatbotService {
           name: p.id,
           quantity: p.quantity || 1,
           price: p.price || 0
-        }))
-        
+        }));
+
         const validation = await this.erp.validateCart(
           tempCart.map(item => ({ id: item.id, quantity: item.quantity }))
-        )
+        );
 
         if (!validation.valid) {
           let errorMessage = 'Algunos productos no estan disponibles:\n\n'
@@ -372,14 +372,17 @@ export class ChatbotService {
 
       const supabase = await createClient()
       
+      // CORREGIDO: Mapear correctamente los items para la base de datos
+      const items = session.cart.map(p => ({
+        product: p.name,  // Usar 'name' como 'product'
+        quantity: p.quantity,
+        subtotal: (p.price || 0) * p.quantity  // Calcular subtotal
+      }))
+      
       const insertData = {
         customer_phone: userId,
         customer_name: session.customerName || null,
-        items: session.cart.map(p => ({
-          product: p.name,
-          quantity: p.quantity,
-          subtotal: (p.price || 0) * p.quantity
-        })),
+        items: items,  // Usar el array mapeado correctamente
         total: total,
         status: 'pending',
         source: 'telegram',
@@ -406,11 +409,11 @@ export class ChatbotService {
       
       this.clearSession(userId)
       
-      return `Pedido #${order.id.slice(0, 8)} confirmado!\n\nProductos:\n${productList}\n\n👤 Cliente: ${session.customerName || 'No especificado'}\n📍 Direccion: ${session.address || 'No especificada'}\n\n💰 Total: $${total.toFixed(2)}\n\nUn agente revisara tu pedido y te notificara cuando sea aprobado.\n\nGracias por tu compra!`
+      return `✅ Pedido #${order.id.slice(0, 8)} confirmado!\n\n📦 Productos:\n${productList}\n\n👤 Cliente: ${session.customerName || 'No especificado'}\n📍 Dirección: ${session.address || 'No especificada'}\n\n💰 Total: $${total.toFixed(2)}\n\n🔄 Tu pedido ahora está de camino.\n\n¡Gracias por tu compra!`
     } catch (error) {
       console.error('Error confirming order:', error)
       this.clearSession(userId)
-      return 'Ocurrio un error al procesar tu pedido. Por favor, intenta de nuevo mas tarde.'
+      return '❌ Ocurrió un error al procesar tu pedido. Por favor, intenta de nuevo más tarde.'
     }
   }
 

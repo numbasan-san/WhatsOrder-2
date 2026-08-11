@@ -8,60 +8,43 @@ import PageHeader from '@/components/dashboard/PageHeader';
 import EmptyState from '@/components/dashboard/EmptyState';
 import StatusBadge from '@/components/dashboard/StatusBadge';
 import { formatCurrency, formatDateTime } from '@/lib/utils/format';
-import { seededInt, seededPick } from '@/lib/utils/seededRandom';
-import { CATALOGO, PRECIOS } from '@/lib/utils/constants';
-
-const STATUS_POOL = ['pending', 'approved', 'approved', 'approved', 'rejected'];
-
-function buildHistorial(cliente: string, pedidosReales: any[]) {
-  const extra = seededInt(`${cliente}-extra`, 2, 6);
-  const historial = [...pedidosReales];
-
-  for (let i = 0; i < extra; i++) {
-    const seed = `${cliente}-hist-${i}`;
-    const numProductos = seededInt(`${seed}-n`, 1, 3);
-    const items: any[] = [];
-    const usados = new Set();
-    for (let j = 0; j < numProductos; j++) {
-      const producto = seededPick(`${seed}-p${j}`, CATALOGO).nombre;
-      if (usados.has(producto)) continue;
-      usados.add(producto);
-      const cantidad = seededInt(`${seed}-q${j}`, 1, 4);
-      items.push({ product: producto, quantity: cantidad, subtotal: PRECIOS[producto] * cantidad });
-    }
-    const total = items.reduce((sum, it) => sum + it.subtotal, 0);
-    const diasAtras = seededInt(`${seed}-d`, 1, 45);
-    historial.push({
-      id: `h-${seed}`,
-      status: seededPick(`${seed}-s`, STATUS_POOL),
-      total,
-      items,
-      created_at: new Date(Date.now() - diasAtras * 86400000).toISOString(),
-    });
-  }
-
-  return historial.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-}
 
 function ClientesContent() {
   const { pedidos } = usePedidos();
   const [selectedName, setSelectedName] = useState<string | null>(null);
 
+  // Agrupar pedidos por cliente con datos reales
   const customers = useMemo(() => {
     const map: Record<string, any> = {};
+    
     pedidos.forEach((p) => {
       const key = p.customer.name;
       if (!map[key]) {
-        map[key] = { name: p.customer.name, phone: p.customer.phone, cedula: p.customer.cedula, orders: [] };
+        map[key] = { 
+          name: p.customer.name, 
+          phone: p.customer.phone, 
+          cedula: p.customer.cedula || 'No registrada',
+          orders: [] 
+        };
       }
       map[key].orders.push(p);
     });
 
     return Object.values(map)
       .map((c) => {
-        const orders = buildHistorial(c.name, c.orders);
+        // Ordenar pedidos por fecha (más reciente primero)
+        const orders = [...c.orders].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
         const totalSpent = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-        return { ...c, orders, totalOrders: orders.length, totalSpent };
+        return { 
+          ...c, 
+          orders, 
+          totalOrders: orders.length, 
+          totalSpent,
+          // Último pedido
+          lastOrder: orders[0] || null
+        };
       })
       .sort((a, b) => b.totalSpent - a.totalSpent);
   }, [pedidos]);
@@ -70,9 +53,15 @@ function ClientesContent() {
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageHeader title="Análisis de Clientes" subtitle="Historial de compra y valor por cliente" count={customers.length} countLabel="clientes" />
+      <PageHeader 
+        title="Análisis de Clientes" 
+        subtitle="Historial de compra y valor por cliente" 
+        count={customers.length} 
+        countLabel="clientes" 
+      />
 
       <div className="grid gap-5 lg:grid-cols-[380px,1fr]">
+        {/* Lista de clientes */}
         <div className="max-h-[75vh] space-y-2 overflow-y-auto scroll-thin rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 p-3 ring-1 ring-slate-100 dark:ring-slate-800 lg:max-h-[calc(100vh-180px)]">
           {customers.length === 0 ? (
             <EmptyState icon={Users} title="Sin clientes registrados" />
@@ -98,11 +87,20 @@ function ClientesContent() {
                     <p className="text-[11px] text-slate-400 dark:text-slate-500">{c.totalOrders} pedidos</p>
                   </div>
                 </div>
+                {c.lastOrder && (
+                  <div className="mt-1.5 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 pt-1.5">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">Último pedido</span>
+                    <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400">
+                      {formatDateTime(c.lastOrder.created_at)}
+                    </span>
+                  </div>
+                )}
               </button>
             ))
           )}
         </div>
 
+        {/* Detalle del cliente seleccionado */}
         <div>
           {selected ? (
             <div className="animate-fade-in rounded-2xl bg-white dark:bg-slate-800 p-5 shadow-card dark:shadow-card-dark ring-1 ring-slate-100 dark:ring-slate-700 sm:p-6">
@@ -113,7 +111,7 @@ function ClientesContent() {
                     <span className="flex items-center gap-1">
                       <Phone className="h-3 w-3" /> {selected.phone}
                     </span>
-                    {selected.cedula && (
+                    {selected.cedula && selected.cedula !== 'No registrada' && (
                       <span className="flex items-center gap-1">
                         <IdCard className="h-3 w-3" /> {selected.cedula}
                       </span>
@@ -122,6 +120,7 @@ function ClientesContent() {
                 </div>
               </div>
 
+              {/* Estadísticas del cliente */}
               <div className="grid grid-cols-3 gap-3 py-5">
                 <div className="rounded-xl bg-slate-50 dark:bg-slate-900 p-3.5 text-center">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Total Pedidos</p>
@@ -139,13 +138,14 @@ function ClientesContent() {
                 </div>
               </div>
 
+              {/* Historial de pedidos */}
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Historial de Pedidos</h3>
               <div className="max-h-[420px] space-y-2 overflow-y-auto scroll-thin pr-1">
-                {selected.orders.map((o: any, idx: number) => (
-                  <div key={o.id ?? idx} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 dark:border-slate-700 px-3.5 py-2.5">
+                {selected.orders.map((o: any) => (
+                  <div key={o.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 dark:border-slate-700 px-3.5 py-2.5">
                     <div className="min-w-0">
                       <p className="truncate text-sm text-slate-600 dark:text-slate-400">
-                        {o.items.map((i: any) => i.product).join(', ')}
+                        {o.items.map((i: any) => `${i.quantity}× ${i.product}`).join(', ')}
                       </p>
                       <p className="text-xs text-slate-400 dark:text-slate-500">{formatDateTime(o.created_at)}</p>
                     </div>
@@ -158,7 +158,11 @@ function ClientesContent() {
               </div>
             </div>
           ) : (
-            <EmptyState icon={MousePointerClick} title="Selecciona un cliente" description="Elige un cliente de la lista para ver su historial completo." />
+            <EmptyState 
+              icon={MousePointerClick} 
+              title="Selecciona un cliente" 
+              description="Elige un cliente de la lista para ver su historial completo." 
+            />
           )}
         </div>
       </div>

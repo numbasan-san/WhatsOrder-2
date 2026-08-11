@@ -80,10 +80,26 @@ export class GeminiAdapter implements ExternalServiceAdapter {
 
   private buildPrompt(message: string): string {
     return `
-Extract products from: "${message}"
-Return JSON: {"products":[{"id":"name","quantity":number}]}
-Only return JSON, no other text.
-`.trim()
+  Extrae los productos y sus cantidades del siguiente mensaje:
+
+  Mensaje: "${message}"
+
+  Reglas:
+  1. Identifica cada producto y su cantidad
+  2. Si no se especifica cantidad, asume 1
+  3. Devuelve SOLO JSON, sin texto adicional
+  4. Los nombres de productos deben estar en español
+
+  Formato de respuesta:
+  {"products":[{"id":"nombre del producto","quantity":cantidad}]}
+
+  Ejemplos:
+  - "Quiero 2 leches y 1 pan" → {"products":[{"id":"leche","quantity":2},{"id":"pan","quantity":1}]}
+  - "3 manzanas" → {"products":[{"id":"manzanas","quantity":3}]}
+  - "habichuelas y plátanos" → {"products":[{"id":"habichuelas","quantity":1},{"id":"plátanos","quantity":1}]}
+
+  Extrae los productos del mensaje y devuelve SOLO el JSON.
+  `.trim();
   }
 
   private cleanJsonResponse(text: string): string {

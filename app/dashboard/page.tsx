@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { 
-  Package, Clock, CheckCircle2, XCircle, Wallet, Plus,
+  Package, Clock, CheckCircle2, XCircle, Wallet,
   TrendingUp 
 } from 'lucide-react';
 import { usePedidos } from '@/context/PedidosContext';
@@ -49,15 +49,7 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageHeader title="Dashboard" subtitle="Resumen general de pedidos" count={pedidos.length} countLabel="pedidos">
-        <button
-          type="button"
-          onClick={() => setFormOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> Nuevo Pedido
-        </button>
-      </PageHeader>
+      <PageHeader title="Dashboard" subtitle="Resumen general de pedidos" count={pedidos.length} countLabel="pedidos" />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard icon={Package} label="Total Pedidos" value={pedidos.length} tone="slate" />

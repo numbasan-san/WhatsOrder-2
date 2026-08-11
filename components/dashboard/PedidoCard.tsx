@@ -45,25 +45,6 @@ export default function PedidoCard({ pedido, onAprobar, onRechazar }: PedidoCard
         <span className="text-[11px] text-slate-400 dark:text-slate-500">{formatDateTime(pedido.created_at)}</span>
       </div>
 
-      {/*canAct && (
-        <div className="mt-2.5 flex gap-2 border-t border-slate-50 dark:border-slate-700 pt-2.5">
-          <button
-            type="button"
-            onClick={() => onAprobar(pedido.id)}
-            className="flex flex-1 items-center justify-center gap-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-500/30 transition hover:bg-emerald-100 dark:hover:bg-emerald-950/60"
-          >
-            <CheckCircle2 className="h-3.5 w-3.5" /> Aprobar
-          </button>
-          <button
-            type="button"
-            onClick={() => setRejectOpen(true)}
-            className="flex flex-1 items-center justify-center gap-1 rounded-md bg-rose-50 dark:bg-rose-950/40 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 ring-1 ring-inset ring-rose-200 dark:ring-rose-500/30 transition hover:bg-rose-100 dark:hover:bg-rose-950/60"
-          >
-            <XCircle className="h-3.5 w-3.5" /> Rechazar
-          </button>
-        </div>
-      )*/}
-
       <RejectReasonModal
         open={rejectOpen}
         onClose={() => setRejectOpen(false)}
