@@ -34,7 +34,8 @@ export function quantityFromMessage(name: string, message: string): number | nul
   const msg = message.toLowerCase()
   const digit = msg.match(new RegExp(`(\\d+)\\s+[^,.;]*${first}`))
   if (digit) return Math.max(1, parseInt(digit[1], 10))
-  const word = msg.match(new RegExp(`([a-záéíóúñ]+)\\s+[^,.;]*${first}`))
+  const numWords = Object.keys(NUM_WORDS).join('|')
+  const word = msg.match(new RegExp(`(${numWords})\\s+[^,.;]*${first}`))
   if (word) { const n = wordToNumber(word[1]); if (n) return n }
   return null
 }
