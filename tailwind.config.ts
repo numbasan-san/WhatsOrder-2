@@ -2,6 +2,7 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
+  darkMode: 'class',
   content: [
     './app/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -22,11 +23,14 @@ const config: Config = {
           800: '#0f6b5f',
           900: '#075E54',
           950: '#04352f',
+          dark: '#1e293b',
         },
       },
       boxShadow: {
         card: '0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06)',
         'card-hover': '0 4px 12px 0 rgb(0 0 0 / 0.08)',
+        'card-dark': '0 1px 2px 0 rgb(0 0 0 / 0.3), 0 1px 3px 0 rgb(0 0 0 / 0.4)',
+        'card-hover-dark': '0 4px 12px 0 rgb(0 0 0 / 0.5)',
       },
       animation: {
         'fade-in': 'fadeIn 0.2s ease-out',
