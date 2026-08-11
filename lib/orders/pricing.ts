@@ -48,6 +48,16 @@ export function matchItemsToCatalog(
   return { items, unmatched }
 }
 
+/** Up to `limit` catalog names closest to `query`, best first. Empty when nothing scores. */
+export function suggestNames(query: string, catalog: Producto[], limit = 3): string[] {
+  return catalog
+    .map((c) => ({ name: c.name, score: matchScore(query, c.name) }))
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((s) => s.name)
+}
+
 export function orderTotal(items: OrderItem[]): number {
   return Math.round(items.reduce((s, i) => s + i.subtotal, 0) * 100) / 100
 }

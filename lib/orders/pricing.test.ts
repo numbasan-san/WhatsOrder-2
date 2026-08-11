@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeName, matchScore, matchItemsToCatalog, orderTotal, buildOrderSummary } from './pricing'
+import { normalizeName, matchScore, suggestNames, matchItemsToCatalog, orderTotal, buildOrderSummary } from './pricing'
 import type { Producto } from '@/lib/types'
 
 const catalog: Producto[] = [
@@ -50,6 +50,16 @@ describe('matchItemsToCatalog', () => {
     ]
     const r = matchItemsToCatalog([{ name: 'leche entera', quantity: 1 }], local)
     expect(r.items[0].sku).toBe('leche-1l')
+  })
+})
+
+describe('suggestNames', () => {
+  it('suggests closest catalog names for a near-miss', () => {
+    const s = suggestNames('leche entera', catalog)
+    expect(s[0]).toBe('Leche entera 1L')
+  })
+  it('returns empty for a totally unrelated query', () => {
+    expect(suggestNames('dragon', catalog)).toEqual([])
   })
 })
 
