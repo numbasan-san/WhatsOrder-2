@@ -10,7 +10,7 @@ import { getConversation, setConversation, clearConversation } from '@/lib/teleg
 import type { DeliveryStatus, OrderItem, OrderStatus, Pedido } from '@/lib/types'
 
 export interface DraftResult {
-  status: 'created' | 'need_address' | 'no_items'
+  status: 'created' | 'need_name' | 'need_address' | 'no_items'
   pedidoId?: string
   summary?: string
   unmatched?: string[]
@@ -22,6 +22,7 @@ interface OrderDraft {
   items: OrderItem[]
   unmatched: string[]
   customerName: string | null
+  deliveryAddress?: string | null
 }
 
 type AuditActor = 'csr' | 'customer' | 'bot' | 'system'
@@ -96,6 +97,16 @@ export class OrderService {
 
     if (items.length === 0) {
       return { status: 'no_items', unmatched, suggestions }
+    }
+
+    if (!parsed.customerName) {
+      await setConversation(this.supabase, chatId, 'awaiting_name', {
+        items,
+        unmatched,
+        customerName: null,
+        deliveryAddress: parsed.deliveryAddress ?? null,
+      } satisfies OrderDraft)
+      return { status: 'need_name', unmatched, suggestions }
     }
 
     if (!parsed.deliveryAddress) {

@@ -266,6 +266,73 @@ const CATALOG = [
   { sku: 'leche-1l', name: 'Leche entera 1L', price: 65, stock: 10, active: true },
 ]
 
+/**
+ * Fake for the Telegram draft flow (createDraftFromMessage / completeDraftWithName /
+ * completeDraftWithAddress): 'productos' select returns the catalog; 'conversation_state'
+ * supports maybeSingle() read (seeded via `conversation`), upsert (captured in `convUpserts`)
+ * and delete (captured in `convDeletes`); 'pedidos' insert returns `insertResult`.
+ */
+function fakeSupabaseForDraft(
+  catalog: Record<string, unknown>[],
+  conversation: { state: string; draft: any } | null,
+  insertResult: { data: any; error: any },
+) {
+  const convUpserts: any[] = []
+  const convDeletes: string[] = []
+  const pedidoInserts: any[] = []
+  const client = {
+    from(table: string) {
+      if (table === 'productos') {
+        const builder: any = { select: () => builder, eq: () => builder, order: () => Promise.resolve({ data: catalog, error: null }) }
+        return builder
+      }
+      if (table === 'conversation_state') {
+        return {
+          select() {
+            const b: any = { eq: () => b, maybeSingle: () => Promise.resolve({ data: conversation ? { state: conversation.state, draft: conversation.draft } : null, error: null }) }
+            return b
+          },
+          upsert(row: any) { convUpserts.push(row); return Promise.resolve({ error: null }) },
+          delete() { return { eq: (_c: string, id: string) => { convDeletes.push(id); return Promise.resolve({ error: null }) } } },
+        }
+      }
+      if (table === 'pedidos') {
+        return {
+          insert(row: any) {
+            pedidoInserts.push(row)
+            const b: any = { select: () => b, single: () => Promise.resolve(insertResult) }
+            return b
+          },
+        }
+      }
+      if (table === 'audit_log') {
+        return { insert() { return Promise.resolve({ error: null }) } }
+      }
+      throw new Error(`fakeSupabaseForDraft: unexpected table '${table}'`)
+    },
+  }
+  return { client: client as any, convUpserts, convDeletes, pedidoInserts }
+}
+
+/** Fake GeminiAdapter returning a fixed ParsedOrder. */
+function fakeGemini(parsed: { items: { name: string; quantity: number }[]; deliveryAddress: string | null; customerName: string | null }) {
+  return { interpret: async () => parsed } as any
+}
+
+describe('OrderService.createDraftFromMessage — name step', () => {
+  it('parks awaiting_name when the customer name is unknown', async () => {
+    const { client, convUpserts } = fakeSupabaseForDraft(CATALOG, null, { data: null, error: null })
+    const gemini = fakeGemini({ items: [{ name: 'leche', quantity: 2 }], deliveryAddress: null, customerName: null })
+    const service = new OrderService(client, gemini)
+
+    const res = await service.createDraftFromMessage('111', 'quiero 2 leche')
+
+    expect(res.status).toBe('need_name')
+    expect(convUpserts).toHaveLength(1)
+    expect(convUpserts[0]).toMatchObject({ chat_id: '111', state: 'awaiting_name' })
+  })
+})
+
 describe('OrderService.createManualOrder', () => {
   it('prices items from the catalog by sku, inserts a pending/manual pedido, writes a created audit row', async () => {
     const insertedRow = {
