@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { usePedidos } from '@/context/PedidosContext';
 import { formatCurrency, formatDateTime } from '@/lib/utils/format';
-import { seededInt } from '@/lib/utils/seededRandom';
 import StatCard from '@/components/dashboard/StatCard';
 import PedidoCard from '@/components/dashboard/PedidoCard';
 import PageHeader from '@/components/dashboard/PageHeader';
@@ -32,12 +31,69 @@ export default function DashboardPage() {
     aprobados.forEach((p) => p.items.forEach((i: any) => (counts[i.product] = (counts[i.product] || 0) + i.quantity)));
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [aprobados]);
-
+  
   const { ventasPorDia, pedidosPorDia } = useMemo(() => {
-    const ventas = DIAS.map((_: string, i: number) => seededInt(`ventas-${i}`, 500, 3500));
-    const cuenta = DIAS.map((_: string, i: number) => seededInt(`pedidos-dia-${i}`, 2, 10));
+    
+    const today = new Date();
+    const dayOfWeek = today.getDay(); 
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1; 
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - mondayOffset);
+    monday.setHours(0, 0, 0, 0);
+
+    const ventas = DIAS.map(() => 0);
+    const cuenta = DIAS.map(() => 0);
+   
+    aprobados.forEach((p) => {
+      if (!p.created_at) return;
+      const orderDate = new Date(p.created_at);
+      const diffDays = Math.floor((orderDate.getTime() - monday.getTime()) / (1000 * 60 * 60 * 24));
+      
+      
+      if (diffDays >= 0 && diffDays < 7) {
+        ventas[diffDays] += p.total || 0;
+        cuenta[diffDays] += 1;
+      }
+    });
+
     return { ventasPorDia: ventas, pedidosPorDia: cuenta };
-  }, []);
+  }, [aprobados]);
+
+  const crecimiento = useMemo(() => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - mondayOffset);
+    monday.setHours(0, 0, 0, 0);
+    
+    let currentWeek = 0;
+    
+    let previousWeek = 0;
+
+    const lastWeekMonday = new Date(monday);
+    lastWeekMonday.setDate(monday.getDate() - 7);
+
+    aprobados.forEach((p) => {
+      if (!p.created_at) return;
+      const orderDate = new Date(p.created_at);
+      const diffCurrent = Math.floor((orderDate.getTime() - monday.getTime()) / (1000 * 60 * 60 * 24));
+      const diffPrevious = Math.floor((orderDate.getTime() - lastWeekMonday.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffCurrent >= 0 && diffCurrent < 7) {
+        currentWeek += 1;
+      } else if (diffPrevious >= 0 && diffPrevious < 7) {
+        previousWeek += 1;
+      }
+    });
+
+    if (previousWeek === 0) return { porcentaje: 0, signo: '' };
+    const pct = ((currentWeek - previousWeek) / previousWeek) * 100;
+    return {
+      porcentaje: Math.abs(Math.round(pct)),
+      signo: pct >= 0 ? '+' : '-'
+    };
+  }, [aprobados]);
 
   const ultimos = (arr: any[]) =>
     [...arr].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
@@ -72,7 +128,8 @@ export default function DashboardPage() {
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Pedidos por Día</h3>
             <span className="flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-              <TrendingUp className="h-3 w-3" /> +12% vs semana pasada
+              <TrendingUp className={`h-3 w-3 ${crecimiento.signo === '-' ? 'rotate-180 text-rose-500' : ''}`} />
+              {crecimiento.signo}{crecimiento.porcentaje}% vs semana pasada
             </span>
           </div>
           <WeeklyLineChart labels={DIAS} values={pedidosPorDia} />
@@ -185,4 +242,4 @@ function BoardColumn({ title, count, dotClass, children }: any) {
       <div className="max-h-[520px] space-y-3 overflow-y-auto scroll-thin pr-1">{children}</div>
     </div>
   );
-} 
+}

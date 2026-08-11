@@ -1,3 +1,5 @@
+// lib/adapters/gemini-adapter.ts
+
 import { ExternalServiceAdapter, InterpretedOrder, ProductItem } from './interfaces'
 
 export class GeminiAdapter implements ExternalServiceAdapter {
@@ -24,6 +26,7 @@ export class GeminiAdapter implements ExternalServiceAdapter {
       
       console.log(`Using model: ${this.model}`)
       
+      // 🔥 PROMPT MEJORADO
       const prompt = this.buildPrompt(message)
       
       const response = await fetch(url, {
@@ -38,7 +41,7 @@ export class GeminiAdapter implements ExternalServiceAdapter {
             }
           ],
           generationConfig: {
-            temperature: 0.1, // Reducir temperatura para respuestas más consistentes
+            temperature: 0.0, // 🔥 Cambiado a 0.0 para respuestas más determinísticas
             topK: 32,
             topP: 0.95,
             maxOutputTokens: 1024,
@@ -63,11 +66,14 @@ export class GeminiAdapter implements ExternalServiceAdapter {
       
       try {
         const parsed = JSON.parse(cleanedText)
-        return this.mapGeminiResponseToOrder(parsed, message)
+        const result = this.mapGeminiResponseToOrder(parsed, message)
+        console.log('📦 Productos extraídos:', result.products)
+        return result
       } catch (parseError) {
         console.error('Error parsing JSON:', parseError)
         const fallbackResult = this.tryFallbackParsing(message)
         if (fallbackResult) {
+          console.log('📦 Fallback productos:', fallbackResult.products)
           return fallbackResult
         }
         return { products: [] }
@@ -78,26 +84,37 @@ export class GeminiAdapter implements ExternalServiceAdapter {
     }
   }
 
+  // 🔥 PROMPT MEJORADO
   private buildPrompt(message: string): string {
     return `
-Extrae los productos y cantidades del siguiente mensaje:
+Eres un asistente que extrae productos y cantidades de mensajes de compras.
 
-"${message}"
+Mensaje del usuario: "${message}"
 
-Reglas:
-1. Cada producto debe tener un ID (nombre del producto) y una cantidad.
-2. Si el usuario dice "2 habichuelas", la cantidad es 2.
-3. Si el usuario dice "un plátano" o "1 plátano", la cantidad es 1.
-4. Si no se especifica cantidad, asume 1.
-5. Los números pueden estar en palabras (uno, dos, tres) o en dígitos (1, 2, 3).
+INSTRUCCIONES IMPORTANTES:
+1. Extrae CADA producto y su CANTIDAD específica.
+2. Si el usuario dice "2 huevos", la cantidad es 2.
+3. Si el usuario dice "3 agua", la cantidad es 3.
+4. Si el usuario dice "4 azúcar", la cantidad es 4.
+5. Si el usuario dice "un pan", la cantidad es 1.
+6. Si el usuario dice "1 leche", la cantidad es 1.
+7. SIEMPRE usa el número que el usuario especificó. NO asumas 1 por defecto.
+8. Los números pueden estar en palabras (uno, dos, tres) o en dígitos (1, 2, 3).
 
-Devuelve SOLO JSON con este formato:
+RESPONDE SOLO CON JSON en este formato EXACTO:
 {"products":[{"id":"nombre_del_producto","quantity":numero}]}
 
-Ejemplo de entrada: "Quiero 2 habichuelas, 3 plátanos y 1 leche"
-Ejemplo de salida: {"products":[{"id":"habichuelas","quantity":2},{"id":"plátanos","quantity":3},{"id":"leche","quantity":1}]}
+EJEMPLOS:
+- Entrada: "Quiero 2 huevos, 3 agua y 4 azúcar"
+- Salida: {"products":[{"id":"huevos","quantity":2},{"id":"agua","quantity":3},{"id":"azúcar","quantity":4}]}
 
-Importante: Cada producto debe tener su cantidad correcta. No uses 1 por defecto si el usuario especificó otra cantidad.
+- Entrada: "Necesito 5 leches y 2 panes"
+- Salida: {"products":[{"id":"leches","quantity":5},{"id":"panes","quantity":2}]}
+
+- Entrada: "un café y dos galletas"
+- Salida: {"products":[{"id":"café","quantity":1},{"id":"galletas","quantity":2}]}
+
+RESPONDE SOLO CON JSON. NO agregues texto adicional.
 `.trim()
   }
 
@@ -166,35 +183,51 @@ Importante: Cada producto debe tener su cantidad correcta. No uses 1 por defecto
     return cleaned
   }
 
+  // 🔥 FALLBACK MEJORADO - Ahora extrae correctamente las cantidades
   private tryFallbackParsing(rawText: string): InterpretedOrder | null {
     try {
       const products: ProductItem[] = []
       
-      // Patrón para capturar "cantidad + producto"
-      // Ejemplos: "2 habichuelas", "3 plátanos", "un pan", "1 leche"
-      const patterns = [
-        // Número + producto: "2 habichuelas", "3 plátanos"
-        /(\d+)\s*([a-záéíóúñ\s]+)/gi,
-        // Palabra numérica + producto: "dos habichuelas", "tres plátanos"
-        /(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s*([a-záéíóúñ\s]+)/gi,
-        // "un/una" + producto: "un pan", "una leche"
-        /un\s*([a-záéíóúñ\s]+)/gi,
-        /una\s*([a-záéíóúñ\s]+)/gi
-      ]
-
-      // Mapeo de palabras numéricas a números
+      // 🔥 Patrón mejorado para capturar "número + producto" o "palabra_numérica + producto"
+      // Ejemplos: "2 huevos", "3 agua", "4 azúcar", "dos huevos", "tres agua"
+      
+      // Mapeo de palabras numéricas a números (expandido)
       const numMap: Record<string, number> = {
         'uno': 1, 'una': 1, 'un': 1,
-        'dos': 2, 'tres': 3, 'cuatro': 4,
-        'cinco': 5, 'seis': 6, 'siete': 7,
-        'ocho': 8, 'nueve': 9, 'diez': 10
+        'dos': 2, 'dos': 2,
+        'tres': 3, 'tres': 3,
+        'cuatro': 4, 'cuatro': 4,
+        'cinco': 5, 'cinco': 5,
+        'seis': 6, 'seis': 6,
+        'siete': 7, 'siete': 7,
+        'ocho': 8, 'ocho': 8,
+        'nueve': 9, 'nueve': 9,
+        'diez': 10, 'diez': 10,
+        'once': 11, 'once': 11,
+        'doce': 12, 'doce': 12,
+        'trece': 13, 'trece': 13,
+        'catorce': 14, 'catorce': 14,
+        'quince': 15, 'quince': 15,
+        'veinte': 20, 'veinte': 20,
+        'treinta': 30, 'treinta': 30,
+        'cuarenta': 40, 'cuarenta': 40,
+        'cincuenta': 50, 'cincuenta': 50,
+        'sesenta': 60, 'sesenta': 60,
+        'setenta': 70, 'setenta': 70,
+        'ochenta': 80, 'ochenta': 80,
+        'noventa': 90, 'noventa': 90,
+        'cien': 100, 'cien': 100
       }
 
-      // Primero intentar con el patrón de número + producto
-      const matches = rawText.matchAll(/(\d+)\s*([a-záéíóúñ\s]+?)(?:,|\.|;|$|y)/gi)
-      for (const match of matches) {
+      // 🔥 Patrón: número + producto (prioridad alta)
+      // Ejemplo: "2 huevos", "3 agua", "4 azúcar"
+      const numberPattern = /(\d+)\s*([a-záéíóúñ\s]+?)(?:,|\.|;|$|y|,| y)/gi
+      let match
+      while ((match = numberPattern.exec(rawText)) !== null) {
         const quantity = parseInt(match[1])
-        const product = match[2].trim().toLowerCase()
+        let product = match[2].trim().toLowerCase()
+        // Limpiar producto (eliminar palabras comunes al final)
+        product = product.replace(/\s*(por favor|gracias|buenas|hola|quiero|deseo|necesito|comprar|llevar|pedir)$/i, '').trim()
         if (product && product.length > 1 && !this.isStopWord(product)) {
           products.push({
             id: this.normalizeProductName(product),
@@ -204,12 +237,13 @@ Importante: Cada producto debe tener su cantidad correcta. No uses 1 por defecto
         }
       }
 
-      // Si no encontramos nada con números, buscar con palabras
+      // 🔥 Si no encontramos con números, buscar con palabras numéricas
       if (products.length === 0) {
-        const wordMatches = rawText.matchAll(/(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s*([a-záéíóúñ\s]+?)(?:,|\.|;|$|y)/gi)
-        for (const match of wordMatches) {
+        const wordPattern = /(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien)\s*([a-záéíóúñ\s]+?)(?:,|\.|;|$|y|,| y)/gi
+        while ((match = wordPattern.exec(rawText)) !== null) {
           const quantity = numMap[match[1].toLowerCase()] || 1
-          const product = match[2].trim().toLowerCase()
+          let product = match[2].trim().toLowerCase()
+          product = product.replace(/\s*(por favor|gracias|buenas|hola|quiero|deseo|necesito|comprar|llevar|pedir)$/i, '').trim()
           if (product && product.length > 1 && !this.isStopWord(product)) {
             products.push({
               id: this.normalizeProductName(product),
@@ -220,12 +254,30 @@ Importante: Cada producto debe tener su cantidad correcta. No uses 1 por defecto
         }
       }
 
-      // Si aún no hay productos, buscar "un/una" + producto
+      // 🔥 Si aún no hay productos, buscar "un/una" + producto
       if (products.length === 0) {
-        const singleMatches = rawText.matchAll(/(?:un|una)\s*([a-záéíóúñ\s]+?)(?:,|\.|;|$|y)/gi)
-        for (const match of singleMatches) {
-          const product = match[1].trim().toLowerCase()
+        const singlePattern = /(?:un|una)\s*([a-záéíóúñ\s]+?)(?:,|\.|;|$|y|,| y)/gi
+        while ((match = singlePattern.exec(rawText)) !== null) {
+          let product = match[1].trim().toLowerCase()
+          product = product.replace(/\s*(por favor|gracias|buenas|hola|quiero|deseo|necesito|comprar|llevar|pedir)$/i, '').trim()
           if (product && product.length > 1 && !this.isStopWord(product)) {
+            products.push({
+              id: this.normalizeProductName(product),
+              quantity: 1,
+              price: 0
+            })
+          }
+        }
+      }
+
+      // 🔥 Si aún no hay productos, buscar cualquier palabra que parezca un producto
+      if (products.length === 0) {
+        // Buscar patrones como "quiero X" o "necesito X"
+        const genericPattern = /(?:quiero|deseo|necesito|comprar|llevar|pedir)\s+([a-záéíóúñ\s]+?)(?:,|\.|;|$|y|,| y)/gi
+        while ((match = genericPattern.exec(rawText)) !== null) {
+          let product = match[1].trim().toLowerCase()
+          product = product.replace(/\s*(por favor|gracias|buenas|hola|quiero|deseo|necesito|comprar|llevar|pedir)$/i, '').trim()
+          if (product && product.length > 2 && !this.isStopWord(product)) {
             products.push({
               id: this.normalizeProductName(product),
               quantity: 1,
@@ -239,13 +291,16 @@ Importante: Cada producto debe tener su cantidad correcta. No uses 1 por defecto
         // Limpiar productos duplicados (sumar cantidades)
         const cleanProducts: Record<string, ProductItem> = {}
         for (const p of products) {
-          if (cleanProducts[p.id]) {
-            cleanProducts[p.id].quantity += p.quantity
+          const key = p.id
+          if (cleanProducts[key]) {
+            cleanProducts[key].quantity += p.quantity
           } else {
-            cleanProducts[p.id] = p
+            cleanProducts[key] = { ...p }
           }
         }
-        return { products: Object.values(cleanProducts) }
+        const result = { products: Object.values(cleanProducts) }
+        console.log('🔧 Fallback result:', result)
+        return result
       }
 
       return null
@@ -256,7 +311,12 @@ Importante: Cada producto debe tener su cantidad correcta. No uses 1 por defecto
   }
 
   private isStopWord(word: string): boolean {
-    const stopWords = ['quiero', 'deseo', 'necesito', 'por favor', 'favor', 'gracias', 'buenas', 'hola', 'comprar', 'llevar', 'pedir']
+    const stopWords = [
+      'quiero', 'deseo', 'necesito', 'por favor', 'favor', 'gracias', 
+      'buenas', 'hola', 'comprar', 'llevar', 'pedir', 'quisiera',
+      'me gustaría', 'me podrías', 'me puedes', 'puedes', 'podrías',
+      'regalar', 'dar', 'traer', 'mandar', 'enviar'
+    ]
     return stopWords.some(sw => word.includes(sw))
   }
 
@@ -266,8 +326,32 @@ Importante: Cada producto debe tener su cantidad correcta. No uses 1 por defecto
     if (Array.isArray(geminiResponse.products)) {
       geminiResponse.products.forEach((p: any) => {
         const id = p.id || p.name || p.product || p.producto || p.nombre
-        // Si la cantidad es undefined o null, intentar extraer del mensaje original
-        let quantity = parseInt(p.quantity || p.cantidad || 1)
+        // 🔥 Asegurar que la cantidad se extrae correctamente
+        let quantity = parseInt(p.quantity || p.cantidad || 0)
+        // Si quantity es 0, intentar extraer del mensaje original
+        if (quantity === 0 && originalMessage) {
+          // Buscar "número + producto" en el mensaje original
+          const regex = new RegExp(`(\\d+)\\s*${this.normalizeProductName(id)}`, 'i')
+          const match = originalMessage.match(regex)
+          if (match) {
+            quantity = parseInt(match[1])
+          } else {
+            // Buscar "palabra_numérica + producto"
+            const numMap: Record<string, number> = {
+              'uno': 1, 'una': 1, 'un': 1,
+              'dos': 2, 'tres': 3, 'cuatro': 4,
+              'cinco': 5, 'seis': 6, 'siete': 7,
+              'ocho': 8, 'nueve': 9, 'diez': 10
+            }
+            for (const [word, num] of Object.entries(numMap)) {
+              const wordRegex = new RegExp(`${word}\\s*${this.normalizeProductName(id)}`, 'i')
+              if (wordRegex.test(originalMessage)) {
+                quantity = num
+                break
+              }
+            }
+          }
+        }
         if (isNaN(quantity) || quantity < 1) quantity = 1
         
         if (id) {
