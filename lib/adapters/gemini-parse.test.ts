@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { cleanJsonResponse, parseGeminiOrder } from './gemini-parse'
+import { cleanJsonResponse, parseGeminiOrder, wordToNumber } from './gemini-parse'
+
+describe('wordToNumber', () => {
+  it('maps spanish number words', () => {
+    expect(wordToNumber('dos')).toBe(2)
+    expect(wordToNumber('TRES')).toBe(3)
+    expect(wordToNumber('veinte')).toBe(20)
+  })
+  it('returns null for non-numbers', () => {
+    expect(wordToNumber('salami')).toBeNull()
+  })
+})
 
 describe('cleanJsonResponse', () => {
   it('strips code fences', () => {

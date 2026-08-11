@@ -12,6 +12,18 @@ export interface ParsedOrder {
   customerName: string | null
 }
 
+const NUM_WORDS: Record<string, number> = {
+  uno: 1, una: 1, un: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6,
+  siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, trece: 13,
+  catorce: 14, quince: 15, veinte: 20,
+}
+
+/** Map a spanish number word (uno..veinte) to its integer, or null if not a number word. */
+export function wordToNumber(word: string): number | null {
+  const n = NUM_WORDS[word.trim().toLowerCase()]
+  return n ?? null
+}
+
 export function parseGeminiOrder(raw: string): ParsedOrder {
   const empty: ParsedOrder = { items: [], deliveryAddress: null, customerName: null }
   let obj: any
