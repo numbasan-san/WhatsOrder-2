@@ -39,6 +39,11 @@ alter table pedidos add column if not exists delivery_address text;
 -- Cloud pedidos has a pre-existing BEFORE UPDATE trigger (update_pedidos_updated_at)
 -- that sets NEW.updated_at; without this column every UPDATE on pedidos errors.
 alter table pedidos add column if not exists updated_at timestamptz default now();
+-- Legacy cloud pedidos (WhatsApp era) has customer_phone NOT NULL. Telegram orders
+-- have no phone, so insertDraft omits it and the insert would violate the constraint,
+-- failing every Telegram order with a generic error. Relax it to match the canonical
+-- schema (migrations/20260809000001_init.sql: customer_phone is nullable).
+alter table pedidos alter column customer_phone drop not null;
 create index if not exists pedidos_status_idx on pedidos(status);
 create index if not exists pedidos_created_at_idx on pedidos(created_at desc);
 
