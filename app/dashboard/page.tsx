@@ -105,14 +105,7 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <PageHeader title="Dashboard" subtitle="Resumen general de pedidos" count={pedidos.length} countLabel="pedidos">
-        <button
-          type="button"
-          onClick={() => setFormOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> Nuevo Pedido
-        </button>
+      <PageHeader title="Dashboard" subtitle="Resumen general de pedidos" count={pedidos.length} countLabel="pedidos" />
       </PageHeader>
 
       {/* Tarjetas de estadísticas */}
