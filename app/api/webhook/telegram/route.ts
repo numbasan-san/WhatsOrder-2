@@ -32,6 +32,16 @@ const AI_BUSY_MESSAGE =
 
 const GENERIC_ERROR_MESSAGE = 'Ocurrió un error procesando tu pedido. Por favor, intenta de nuevo más tarde.'
 
+// Saludos y palabras de ayuda que no son pedidos. Al recibirlos (sin una
+// conversación activa) respondemos con la bienvenida en vez de intentar
+// interpretarlos como productos y fallar con "No pude identificar productos".
+const GREETING_RE =
+  /^\s*(hola|holi|ola|buenas|buenos?\s+d[ií]as|buenas\s+tardes|buenas\s+noches|hey|hi|hello|saludos|qu[eé]\s+tal|men[uú]|ayuda|help|info|empezar|start)[\s!.¡]*$/i
+
+function isGreeting(text: string): boolean {
+  return GREETING_RE.test(text)
+}
+
 function unmatchedSuffix(unmatched?: string[], suggestions?: Record<string, string[]>): string {
   if (!unmatched || unmatched.length === 0) return ''
   const lines = unmatched.map((u) => {
@@ -120,6 +130,13 @@ export async function POST(req: NextRequest) {
 
       try {
         const conv = await getConversation(supabase, chatId)
+
+        // Sin conversación activa, un saludo/ayuda no es un pedido: responde la bienvenida.
+        if (!conv && isGreeting(text)) {
+          await telegram.sendSimpleMessage(chatId, WELCOME_MESSAGE)
+          return NextResponse.json({ status: 'greeting' })
+        }
+
         const res =
           conv?.state === 'awaiting_name'
             ? await orderService.completeDraftWithName(chatId, text)
