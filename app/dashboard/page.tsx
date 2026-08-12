@@ -106,7 +106,6 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-[1400px]">
       <PageHeader title="Dashboard" subtitle="Resumen general de pedidos" count={pedidos.length} countLabel="pedidos" />
-      </PageHeader>
 
       {/* Tarjetas de estadísticas */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
